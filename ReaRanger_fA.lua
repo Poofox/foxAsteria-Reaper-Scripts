@@ -1,7 +1,9 @@
 -- @description ReaRanger fA - Realtime Region List Editor
 -- @author foxAsteria
--- @version 0.7.20
+-- @version 0.7.21
 -- @changelog
+--   v0.7.21 (2026-06-16) — Title-bar app-name text recolored to the window bg grey
+--     (0x787878, Col_WindowBg) per Poofox — was near-white and read poorly here.
 --   v0.7.20 (2026-06-16) — Fix stale title-bar version label: the window drew a
 --     hardcoded 'v0.7.15' (never bumped past the v0.7.16-0.7.19 batch) so it always
 --     displayed the wrong version regardless of the real one. Now reads v0.7.20.
@@ -234,7 +236,7 @@ local PLAYHEAD_COL       = 0xD8D8D8FF  -- near-white grey
 local EMPTY_TEXT_COL     = 0x404040FF
 local GHOST_COL          = 0xF8F8F8FF  -- bright ghost outline for lane drag preview
 local TITLE_BG_COL       = 0x383838FF  -- title-bar band background
-local TITLE_TEXT_COL     = 0xE6E6E6FF  -- title-bar app name
+local TITLE_TEXT_COL     = 0x787878FF  -- title-bar app name = window bg grey (Col_WindowBg), per Poofox
 local OVERLAY_BORDER_COL = 0xE0E0E0FF  -- brighter border = overlay/marker region (lane > 0)
 local INSERT_CARET_COL   = 0xFFFFFFFF  -- pure-white insertion caret (insert-mode drop slot)
 local INSERT_GHOST_COL   = 0xFFFFFF44  -- translucent landing rect at the insert slot
@@ -1693,7 +1695,7 @@ local function draw_title_bar()
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + avail_w, y1 + bar_h, TITLE_BG_COL)
   ImGui.DrawList_AddRect(dl,       x1, y1, x1 + avail_w, y1 + bar_h, LANE_BORDER_COL)
   -- App name (draw-list text = not an item, so this area stays drag-anywhere)
-  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.20')
+  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.21')
 
   -- ? (help + tooltip-toggle) then X close, top-right inside the band.
   -- The moved-here ? does double duty: hover = full help, click = toggle all
