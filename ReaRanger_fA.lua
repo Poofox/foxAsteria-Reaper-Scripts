@@ -1,7 +1,10 @@
 -- @description ReaRanger fA - Realtime Region List Editor
 -- @author foxAsteria
--- @version 0.7.19
+-- @version 0.7.20
 -- @changelog
+--   v0.7.20 (2026-06-16) — Fix stale title-bar version label: the window drew a
+--     hardcoded 'v0.7.15' (never bumped past the v0.7.16-0.7.19 batch) so it always
+--     displayed the wrong version regardless of the real one. Now reads v0.7.20.
 --   v0.7.19 (2026-06-16) — Ship prep: content-move CONFIRMED LIVE, diagnostics
 --     stripped. Removed the `[ReaRanger reorder]` console spam and the verbose
 --     "X items in spans · Y moved" status text; status now reads cleanly
@@ -1690,7 +1693,7 @@ local function draw_title_bar()
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + avail_w, y1 + bar_h, TITLE_BG_COL)
   ImGui.DrawList_AddRect(dl,       x1, y1, x1 + avail_w, y1 + bar_h, LANE_BORDER_COL)
   -- App name (draw-list text = not an item, so this area stays drag-anywhere)
-  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.15')
+  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.20')
 
   -- ? (help + tooltip-toggle) then X close, top-right inside the band.
   -- The moved-here ? does double duty: hover = full help, click = toggle all
