@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<index version="1" name="foxAsteria-Reaper-Scripts">
+  <category name="Arrangement">
+    <reapack name="ReaRanger_fA.lua" type="script" desc="ReaRanger fA - Realtime Region List Editor">
+      <version name="0.7.19" author="foxAsteria" time="2026-06-16T16:47:12Z">
+        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/b7d689207cc8f72eabdad5399fb2bd06c93c038c/ReaRanger_fA.lua</source>
+        <changelog><![CDATA[v0.7.19 — Ship release. Realtime region-list editor / lite arranger:
+- Reorder regions (list or lane) and the media content moves with them (ripple).
+- Insert gaps (single-click +Gap, double-click to type exact length).
+- Per-digit time drag (grab minutes / seconds / ms independently; Ctrl = fine).
+- Lane drag to reorder, drag edges to resize; beats/time toggle.
+- In-place rename (double-click), custom color picker per region.
+Requires ReaImGui (install via ReaPack: ReaTeam Extensions).]]></changelog>
+      </version>
+      <metadata>
+        <description><![CDATA[ReaRanger fA is a lightweight region-list arranger for REAPER. It shows your project regions as an editable list plus an overview lane; reordering a region physically moves the media items under it (ripple), inserting a gap opens silence and slides later audio right. Per-digit time dragging, in-place rename, custom per-region colors, and a beats/time display toggle. Built by foxAsteria with Claude.
+
+Requires the ReaImGui extension (install via ReaPack from the ReaTeam Extensions repository).]]></description>
+        <link rel="website">https://github.com/Poofox/foxAsteria-Reaper-Scripts</link>
+      </metadata>
+    </reapack>
+  </category>
+</index>
