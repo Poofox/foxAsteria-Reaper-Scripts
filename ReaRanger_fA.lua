@@ -1,7 +1,13 @@
 -- @description ReaRanger fA - Realtime Region List Editor
 -- @author foxAsteria
--- @version 0.7.25
+-- @version 0.7.26
 -- @changelog
+--   v0.7.26 (2026-06-16) — Ctrl+drag-DUPLICATE on the lane: hold Ctrl and drag a
+--     region to clone it (marker + the media items in its span) to the drop point.
+--     Respects the Insert/Lanes toggle like a move — Lanes = free overlay copy;
+--     Insert = ripple-open r.len of space then place. Items cloned exactly via state
+--     chunk with regenerated GUIDs (no collisions); snapshot taken before any ripple.
+--     Undo-wrapped. NOTE: list-drag duplicate is the follow-up (lane-first).
 --   v0.7.25 (2026-06-16) — Settled: ALL title-band text (app-name + info/stats line)
 --     uses the original near-white 0xE6E6E6, driven from one constant. The info line
 --     was the only broken one (dark TextDisabled on the dark band → invisible); it now
@@ -658,6 +664,84 @@ local function apply_move_free(r, new_start, move_content)
   S.dirty = true
   set_status(('Moved region to %.3fs%s'):format(new_start, move_content and '' or ' (overlay/marker)'))
   Tel.log('move_free', string.format('{"delta":%.3f,"content":%s}', delta, tostring(move_content)))
+end
+
+-- ====================================================================
+-- Duplicate (v0.7.26): Ctrl+drag a region on the lane → clone it (marker +
+-- the media items in its span) to the drop position. Respects the Insert/Lanes
+-- toggle, same as move: 'lanes' = free overlay placement (no ripple); 'insert'
+-- = open r.len of space at the drop and ripple later content right, then place.
+-- Items are cloned EXACTLY via state chunk (take/source/fades preserved) with
+-- regenerated GUIDs so there are no duplicate-GUID collisions. Snapshot is taken
+-- BEFORE any ripple so moving the originals can't disturb the clone source.
+-- ====================================================================
+local function snapshot_span_items(src_pos, src_end)
+  local snap, n = {}, reaper.CountMediaItems(0)
+  for i = 0, n - 1 do
+    local it = reaper.GetMediaItem(0, i)
+    local ip = reaper.GetMediaItemInfo_Value(it, 'D_POSITION')
+    if ip >= src_pos - 0.001 and ip < src_end + 0.001 then
+      local _, chunk = reaper.GetItemStateChunk(it, '', false)
+      snap[#snap + 1] = {track = reaper.GetMediaItem_Track(it), chunk = chunk, pos = ip}
+    end
+  end
+  return snap
+end
+
+-- GUID-shaped token: {8-4-4-4-12 hex}. Regenerate every one so clones are unique.
+local GUID_PAT = '{%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x}'
+local function clone_snapshot(snap, delta)
+  for _, s in ipairs(snap) do
+    local newit = reaper.AddMediaItemToTrack(s.track)
+    local chunk = s.chunk:gsub(GUID_PAT, function() return reaper.genGuid('') end)
+    reaper.SetItemStateChunk(newit, chunk, false)
+    reaper.SetMediaItemInfo_Value(newit, 'D_POSITION', s.pos + delta)
+  end
+  return #snap
+end
+
+local function duplicate_region(r, new_start, mode)
+  if not r then return end
+  if new_start < 0 then new_start = 0 end
+  local delta = new_start - r.pos
+
+  reaper.Undo_BeginBlock()
+  reaper.PreventUIRefresh(1)
+
+  -- snapshot source items FIRST (original positions; survives a later ripple)
+  local snap = snapshot_span_items(r.pos, r.rend)
+
+  if mode == 'insert' then
+    -- open r.len of empty space at the drop; later items shift right via ripple
+    with_ripple_all(function()
+      local ts_a, ts_b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+      reaper.GetSet_LoopTimeRange(true, false, new_start, new_start + r.len, false)
+      reaper.Main_OnCommand(40200, 0)   -- insert empty space
+      reaper.GetSet_LoopTimeRange(true, false, ts_a, ts_b, false)
+    end)
+    -- markers aren't touched by ripple — slide every region at/after the drop
+    for _, rr in ipairs(S.regions) do
+      if rr.pos >= new_start - 1e-6 then
+        reaper.SetProjectMarker4(0, rr.id, true, rr.pos + r.len, rr.rend + r.len,
+                                 rr.name, rr.color_native, 0)
+        rr.pos = rr.pos + r.len; rr.rend = rr.rend + r.len
+      end
+    end
+  else
+    set_autoxfade(S.overlap_mode == 'crossfade')
+  end
+
+  local n_items = clone_snapshot(snap, delta)
+  reaper.AddProjectMarker2(0, true, new_start, new_start + r.len, r.name,
+                           r.color_native or -1, 0)
+
+  reaper.PreventUIRefresh(-1)
+  reaper.UpdateArrange()
+  reaper.UpdateTimeline()
+  reaper.Undo_EndBlock(('ReaRanger: duplicate region (%s, %d items)'):format(mode, n_items), -1)
+  S.dirty = true
+  set_status(('Duplicated "%s" → %.3fs (%s, %d items)'):format(r.name, new_start, mode, n_items))
+  Tel.log('duplicate', string.format('{"mode":"%s","delta":%.3f,"items":%d}', mode, delta, n_items))
 end
 
 local function apply_length(r, new_len)
@@ -1340,7 +1424,9 @@ local function draw_region_lane()
     local hr, _, hrx2 = region_at_xy(mx, my)
     if hr then
       local mode = (math.abs(mx - hrx2) <= LANE_EDGE_PX) and 'resize' or 'move'
-      S.lane_drag = {id=hr.id, mode=mode, start_x=mx,
+      -- Ctrl held at grab = DUPLICATE (move-mode only); captured at grab like REAPER
+      local dup = (mode == 'move') and ((ImGui.GetKeyMods(ctx) & ImGui.Mod_Ctrl) ~= 0)
+      S.lane_drag = {id=hr.id, mode=mode, start_x=mx, dup=dup,
                      orig_pos=hr.pos, orig_len=hr.len, lane=lane_of[hr.id], moved=false}
     end
   end
@@ -1374,7 +1460,11 @@ local function draw_region_lane()
           local w_px = (ld.orig_len / span) * (x2g - x1g)
           ImGui.DrawList_AddRectFilled(dl, caret_x, lane_top(0), caret_x + w_px, lane_bot(0), INSERT_GHOST_COL)
           local before = (idx <= #others) and others[idx].name or '(end)'
-          tip(('INSERT before %s  ·  others reflow, audio follows'):format(before))
+          if ld.dup then
+            tip(('DUPLICATE → INSERT before %s  ·  copy added, later content reflows'):format(before))
+          else
+            tip(('INSERT before %s  ·  others reflow, audio follows'):format(before))
+          end
         elseif ld.mode == 'move' then
           -- OVERLAY: free slide with strong edge-snapping (can stack / nest).
           local raw = ld.orig_pos + delta_t
@@ -1392,7 +1482,11 @@ local function draw_region_lane()
           ld.preview = target
           local gx1, gx2 = t_to_x(target), t_to_x(target + ld.orig_len)
           ImGui.DrawList_AddRect(dl, gx1, yt, gx2, yb, GHOST_COL, 0, 0, 2.0)
-          tip(('OVERLAY → %s  ·  marker only'):format(fmt_time_full(ld.preview)))
+          if ld.dup then
+            tip(('DUPLICATE → %s  ·  copy placed (content follows)'):format(fmt_time_full(ld.preview)))
+          else
+            tip(('OVERLAY → %s  ·  marker only'):format(fmt_time_full(ld.preview)))
+          end
         else
           local raw_end = ld.orig_pos + ld.orig_len + delta_t
           local snapped = snap_edge(raw_end, ld.id) or maybe_snap(raw_end)
@@ -1408,7 +1502,12 @@ local function draw_region_lane()
       if ImGui.IsMouseReleased(ctx, 0) then
         if ld.moved and ld.preview then
           if ld.mode == 'move' then
-            if S.lane_mode == 'insert' then
+            if ld.dup then
+              -- Ctrl+drag: clone the region (marker + media) to the drop. Respects
+              -- the Insert/Lanes toggle exactly like a move (insert = ripple-open +
+              -- place; lanes = free overlay placement).
+              duplicate_region(r, ld.preview, S.lane_mode)
+            elseif S.lane_mode == 'insert' then
               -- INSERT: reorder into the dropped slot; commit_reorder shifts the
               -- media items deterministically so content follows + others reflow.
               local order = order_for_insert(ld.id, ld.preview)
@@ -1706,7 +1805,7 @@ local function draw_title_bar()
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + avail_w, y1 + bar_h, TITLE_BG_COL)
   ImGui.DrawList_AddRect(dl,       x1, y1, x1 + avail_w, y1 + bar_h, LANE_BORDER_COL)
   -- App name (draw-list text = not an item, so this area stays drag-anywhere)
-  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.25')
+  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.26')
 
   -- ? (help + tooltip-toggle) then X close, top-right inside the band.
   -- The moved-here ? does double duty: hover = full help, click = toggle all
