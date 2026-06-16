@@ -1,10 +1,13 @@
 -- @description ReaRanger fA - Realtime Region List Editor
 -- @author foxAsteria
--- @version 0.7.24
+-- @version 0.7.25
 -- @changelog
---   v0.7.24 (2026-06-16) — Title-bar text readability, settled: band is DARK
---     (0x383838), so both the app-name AND the info/stats line now draw in muted
---     light grey 0xA8A8A8 (was: name invisible-dark, info line TextDisabled-dark).
+--   v0.7.25 (2026-06-16) — Settled: ALL title-band text (app-name + info/stats line)
+--     uses the original near-white 0xE6E6E6, driven from one constant. The info line
+--     was the only broken one (dark TextDisabled on the dark band → invisible); it now
+--     follows TITLE_TEXT_COL. The earlier muting detour is fully reverted.
+--   v0.7.24 (2026-06-16) — Title-bar text readability: band is DARK (0x383838), so both
+--     the app-name AND the info/stats line draw from one TITLE_TEXT_COL constant.
 --   v0.7.23 (2026-06-16) — Title-bar app-name = 0x404040, matching the info/stats
 --     line (Col_TextDisabled): muted-dark, reads on the light surface. (Light greys
 --     went the wrong way — text sits on a light bg, so it needed to go darker.)
@@ -244,7 +247,7 @@ local PLAYHEAD_COL       = 0xD8D8D8FF  -- near-white grey
 local EMPTY_TEXT_COL     = 0x404040FF
 local GHOST_COL          = 0xF8F8F8FF  -- bright ghost outline for lane drag preview
 local TITLE_BG_COL       = 0x383838FF  -- title-bar band background
-local TITLE_TEXT_COL     = 0xA8A8A8FF  -- title-bar text (app name + info line) = muted light grey, readable on dark band, per Poofox
+local TITLE_TEXT_COL     = 0xE6E6E6FF  -- title-bar text (app name + info line) = original near-white, readable on dark band, per Poofox
 local OVERLAY_BORDER_COL = 0xE0E0E0FF  -- brighter border = overlay/marker region (lane > 0)
 local INSERT_CARET_COL   = 0xFFFFFFFF  -- pure-white insertion caret (insert-mode drop slot)
 local INSERT_GHOST_COL   = 0xFFFFFF44  -- translucent landing rect at the insert slot
@@ -1703,7 +1706,7 @@ local function draw_title_bar()
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + avail_w, y1 + bar_h, TITLE_BG_COL)
   ImGui.DrawList_AddRect(dl,       x1, y1, x1 + avail_w, y1 + bar_h, LANE_BORDER_COL)
   -- App name (draw-list text = not an item, so this area stays drag-anywhere)
-  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.24')
+  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.25')
 
   -- ? (help + tooltip-toggle) then X close, top-right inside the band.
   -- The moved-here ? does double duty: hover = full help, click = toggle all
