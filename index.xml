@@ -2,9 +2,11 @@
 <index version="1" name="foxAsteria-Reaper-Scripts">
   <category name="Arrangement">
     <reapack name="ReaRanger_fA.lua" type="script" desc="ReaRanger fA - Realtime Region List Editor">
-      <version name="0.7.19" author="foxAsteria" time="2026-06-16T16:47:12Z">
-        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/b7d689207cc8f72eabdad5399fb2bd06c93c038c/ReaRanger_fA.lua</source>
-        <changelog><![CDATA[v0.7.19 — Ship release. Realtime region-list editor / lite arranger:
+      <version name="0.7.20" author="foxAsteria" time="2026-06-16T17:01:36Z">
+        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/3240806181d4a6f518de0768f31dffde94ef58da/ReaRanger_fA.lua</source>
+        <changelog><![CDATA[v0.7.20 — Fix stale title-bar version label (window hardcoded "v0.7.15").
+
+v0.7.19 — Ship release. Realtime region-list editor / lite arranger:
 - Reorder regions (list or lane) and the media content moves with them (ripple).
 - Insert gaps (single-click +Gap, double-click to type exact length).
 - Per-digit time drag (grab minutes / seconds / ms independently; Ctrl = fine).
