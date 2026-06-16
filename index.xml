@@ -2,9 +2,10 @@
 <index version="1" name="foxAsteria-Reaper-Scripts">
   <category name="Arrangement">
     <reapack name="ReaRanger_fA.lua" type="script" desc="ReaRanger fA - Realtime Region List Editor">
-      <version name="0.7.21" author="foxAsteria" time="2026-06-16T17:03:37Z">
-        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/e3dabad04544c81a4dfde5fd80766cfbf5928736/ReaRanger_fA.lua</source>
-        <changelog><![CDATA[v0.7.21 — Title-bar app-name recolored to window bg grey for readability.
+      <version name="0.7.25" author="foxAsteria" time="2026-06-16T17:20:03Z">
+        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/be15a582f9a5fa5dd1aef3ce62c023d316e04265/ReaRanger_fA.lua</source>
+        <changelog><![CDATA[v0.7.25 — Title-band text readability: app-name and info/stats line both use the
+near-white title color (info line was previously dark-on-dark and unreadable).
 
 v0.7.20 — Fix stale title-bar version label (window hardcoded "v0.7.15").
 
