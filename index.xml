@@ -2,23 +2,42 @@
 <index version="1" name="foxAsteria-Reaper-Scripts">
   <category name="Arrangement">
     <reapack name="ReaRanger_fA.lua" type="script" desc="ReaRanger fA - Realtime Region List Editor">
-      <version name="0.7.25" author="foxAsteria" time="2026-06-16T17:20:03Z">
-        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/be15a582f9a5fa5dd1aef3ce62c023d316e04265/ReaRanger_fA.lua</source>
-        <changelog><![CDATA[v0.7.25 — Title-band text readability: app-name and info/stats line both use the
-near-white title color (info line was previously dark-on-dark and unreadable).
+      <version name="0.7.28" author="foxAsteria" time="2026-06-17T16:24:55Z">
+        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/ad19b2c9e914e6bfffb084afb35f945f74f28aa3/ReaRanger_fA.lua</source>
+        <changelog><![CDATA[v0.7.28 — Length/duration entry honours the Time/Beats toggle everywhere (was
+seconds-only in three spots): the +Region length field, the gap field, and the
+lane hover "len" readout. Values stay seconds internally.
 
-v0.7.20 — Fix stale title-bar version label (window hardcoded "v0.7.15").
+v0.7.27 — CONTENT-COMPLETE moves. New carry_content() primitive: reordering a
+region or free-moving it on the lane now carries the media items AND the track
+automation (envelope points) AND normal markers AND tempo/timesig markers in the
+span — not just the audio items. 100% deterministic set-absolute (no native
+ripple, pref/timebase-independent). NOTE on beats-timebase projects: moving
+tempo markers re-warps beat-anchored content (REAPER's anchoring) — flat-tempo
+and time-timebase projects are unaffected.
+
+v0.7.26 — Ctrl+drag-DUPLICATE on the lane: hold Ctrl and drag a region to clone
+it (marker + the media items in its span) to the drop point. Respects the
+Insert/Lanes toggle. Items cloned via state chunk with regenerated GUIDs.
+
+v0.7.25 — Title-band text readability: app-name and info/stats line both use the
+near-white title color.
 
 v0.7.19 — Ship release. Realtime region-list editor / lite arranger:
-- Reorder regions (list or lane) and the media content moves with them (ripple).
+- Reorder regions (list or lane) and the media content moves with them.
 - Insert gaps (single-click +Gap, double-click to type exact length).
 - Per-digit time drag (grab minutes / seconds / ms independently; Ctrl = fine).
 - Lane drag to reorder, drag edges to resize; beats/time toggle.
 - In-place rename (double-click), custom color picker per region.
+
+BETA: actively developed — expect rough edges. A per-session telemetry log is
+written under REAPER's Data/ReaRanger/ for diagnosing moves.
 Requires ReaImGui (install via ReaPack: ReaTeam Extensions).]]></changelog>
       </version>
       <metadata>
-        <description><![CDATA[ReaRanger fA is a lightweight region-list arranger for REAPER. It shows your project regions as an editable list plus an overview lane; reordering a region physically moves the media items under it (ripple), inserting a gap opens silence and slides later audio right. Per-digit time dragging, in-place rename, custom per-region colors, and a beats/time display toggle. Built by foxAsteria with Claude.
+        <description><![CDATA[ReaRanger fA is a lightweight region-list arranger for REAPER. It shows your project regions as an editable list plus an overview lane; reordering a region physically moves the content under it — media items, track automation, normal markers, and tempo/timesig markers all travel together. Inserting a gap opens silence and slides later audio right. Per-digit time dragging, in-place rename, custom per-region colors, and a beats/time display toggle. Built by foxAsteria with Claude.
+
+BETA — actively developed. A per-session telemetry log is written under REAPER's Data/ReaRanger/ folder to help diagnose move behavior.
 
 Requires the ReaImGui extension (install via ReaPack from the ReaTeam Extensions repository).]]></description>
         <link rel="website">https://github.com/Poofox/foxAsteria-Reaper-Scripts</link>
