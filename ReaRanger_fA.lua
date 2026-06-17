@@ -1,7 +1,22 @@
 -- @description ReaRanger fA - Realtime Region List Editor
 -- @author foxAsteria
--- @version 0.7.26
+-- @version 0.7.28
 -- @changelog
+--   v0.7.28 (2026-06-16) — Length/duration entry honours the Time/Beats toggle
+--     everywhere (was seconds-only in three spots): the +Region length field,
+--     the gap field (button label + type-exact entry + tooltips), and the lane
+--     hover "len" readout. The per-row Length COLUMN already respected it; these
+--     now match. Values stay seconds internally; display/parse route through
+--     fmt_time_full/parse_time_full with kind='len' (measures.beats vs MM:SS.mmm).
+--   v0.7.27 (2026-06-16) — CONTENT-COMPLETE moves (punch #2). New unified
+--     carry_content() primitive moves a span's media items + track automation
+--     (envelope points) + normal markers + tempo/timesig markers by a delta —
+--     100% manual set-absolute, no native ripple, pref/timebase-independent.
+--     Reorder (commit_reorder) and free lane-move (apply_move_free) now carry
+--     ALL of that, not just media items. Proven by ~/Downloads/rr_carry_probe.lua
+--     (all 4 element types swap cleanly). Beats-timebase note: moving tempo
+--     markers re-warps beat-anchored content (REAPER's anchoring, documented).
+--     apply_start/add_gap/duplicate still use native ripple (follow-up).
 --   v0.7.26 (2026-06-16) — Ctrl+drag-DUPLICATE on the lane: hold Ctrl and drag a
 --     region to clone it (marker + the media items in its span) to the drop point.
 --     Respects the Insert/Lanes toggle like a move — Lanes = free overlay copy;
@@ -546,6 +561,119 @@ local function with_ripple_all(fn)
 end
 
 -- ====================================================================
+-- carry_content (v0.7.27) — the unified content-mover. Proven by
+-- ~/Downloads/rr_carry_probe.lua (all 4 element types carry a per-span delta in
+-- a non-contiguous swap). spans = list of {lo, hi, delta}: every media item,
+-- track-envelope point, normal (non-region) marker, and tempo/timesig marker
+-- whose ORIGINAL position falls in some span is moved by that span's delta.
+-- 100% manual set-absolute — NO native ripple, NO time selection, NO command
+-- IDs → deterministic and independent of the user's ripple/insert-time prefs.
+-- Snapshot-then-apply throughout so an overlapping source/dest never double-
+-- applies. opts.items / opts.env = false skips those classes.
+-- Region markers are intentionally NOT touched here — callers reposition those
+-- explicitly (they own the region layout). Automation ITEMS (AI objects) are a
+-- known gap (edge case for a lite arranger); track envelope POINTS are carried.
+-- NOTE: in a beats-timebase project with tempo changes, moving tempo markers
+-- re-warps beat-anchored content — that is REAPER's anchoring, not a bug here.
+-- ====================================================================
+local CARRY_TOL = 0.001
+local function delta_for(pos, spans)
+  for _, s in ipairs(spans) do
+    if pos >= s.lo - CARRY_TOL and pos < s.hi + CARRY_TOL then return s.delta end
+  end
+  return nil
+end
+
+local function carry_content(spans, opts)
+  opts = opts or {}
+  local do_items = opts.items ~= false
+  local do_env   = opts.env   ~= false
+  local stats = {items = 0, env = 0, markers = 0, tempo = 0}
+
+  -- 1) MEDIA ITEMS — stable handle, snapshot then apply
+  if do_items then
+    local moves = {}
+    for i = 0, reaper.CountMediaItems(0) - 1 do
+      local it = reaper.GetMediaItem(0, i)
+      local p = reaper.GetMediaItemInfo_Value(it, 'D_POSITION')
+      local d = delta_for(p, spans)
+      if d and math.abs(d) > 1e-9 then moves[#moves+1] = {it = it, np = p + d} end
+    end
+    for _, m in ipairs(moves) do
+      reaper.SetMediaItemInfo_Value(m.it, 'D_POSITION', m.np)
+    end
+    stats.items = #moves
+  end
+
+  -- 2) TRACK ENVELOPE POINTS — set with noSort=true (idx stays valid), sort once
+  if do_env then
+    local touched = {}
+    for ti = 0, reaper.CountTracks(0) - 1 do
+      local tr = reaper.GetTrack(0, ti)
+      for ei = 0, reaper.CountTrackEnvelopes(tr) - 1 do
+        local env = reaper.GetTrackEnvelope(tr, ei)
+        local moves = {}
+        for pi = 0, reaper.CountEnvelopePoints(env) - 1 do
+          local ok, t = reaper.GetEnvelopePoint(env, pi)
+          if ok then
+            local d = delta_for(t, spans)
+            if d and math.abs(d) > 1e-9 then moves[#moves+1] = {idx = pi, nt = t + d} end
+          end
+        end
+        if #moves > 0 then
+          for _, mv in ipairs(moves) do
+            reaper.SetEnvelopePoint(env, mv.idx, mv.nt, nil, nil, nil, nil, true)
+          end
+          touched[#touched+1] = env
+          stats.env = stats.env + #moves
+        end
+      end
+    end
+    for _, env in ipairs(touched) do reaper.Envelope_SortPoints(env) end
+  end
+
+  -- 3) NORMAL MARKERS — addressed by STABLE IDnumber, written to an ABSOLUTE
+  --    target (same pattern the shipped region-marker code uses).
+  local mk, i = {}, 0
+  while true do
+    local retval, isrgn, pos, _, name, idnum, color = reaper.EnumProjectMarkers3(0, i)
+    if retval == 0 then break end
+    if not isrgn then
+      local d = delta_for(pos, spans)
+      if d and math.abs(d) > 1e-9 then
+        mk[#mk+1] = {idnum = idnum, np = pos + d, name = name, color = color}
+      end
+    end
+    i = i + 1
+  end
+  for _, m in ipairs(mk) do
+    reaper.SetProjectMarker4(0, m.idnum, false, m.np, 0, m.name, m.color, 0)
+  end
+  stats.markers = #mk
+
+  -- 4) TEMPO/TIMESIG MARKERS — no stable id & ptidx churns on move, so snapshot,
+  --    delete DESCENDING (keeps lower idx valid), then re-add at target time.
+  --    Guard t>1e-6 so the project-initial tempo marker is never relocated.
+  local tm = {}
+  for ti = 0, reaper.CountTempoTimeSigMarkers(0) - 1 do
+    local ok, tpos, _, _, bpm, num, den, lin = reaper.GetTempoTimeSigMarker(0, ti)
+    if ok and tpos > 1e-6 then
+      local d = delta_for(tpos, spans)
+      if d and math.abs(d) > 1e-9 then
+        tm[#tm+1] = {idx = ti, ntpos = tpos + d, bpm = bpm, num = num, den = den, lin = lin}
+      end
+    end
+  end
+  table.sort(tm, function(a, b) return a.idx > b.idx end)
+  for _, t in ipairs(tm) do reaper.DeleteTempoTimeSigMarker(0, t.idx) end
+  for _, t in ipairs(tm) do
+    reaper.AddTempoTimeSigMarker(0, t.ntpos, t.bpm, t.num, t.den, t.lin)
+  end
+  stats.tempo = #tm
+  return stats
+end
+
+-- ====================================================================
 -- Region mutations (each wraps its own undo block; live to project)
 -- ====================================================================
 local function apply_rename(r, new_name)
@@ -641,16 +769,10 @@ local function apply_move_free(r, new_start, move_content)
   reaper.PreventUIRefresh(1)
 
   if move_content then
-    -- shift media items whose start falls inside this region's current span
-    local op, oe = r.pos, r.rend
-    local n = reaper.CountMediaItems(0)
-    for i = 0, n - 1 do
-      local it = reaper.GetMediaItem(0, i)
-      local ip = reaper.GetMediaItemInfo_Value(it, 'D_POSITION')
-      if ip >= op and ip < oe then
-        reaper.SetMediaItemInfo_Value(it, 'D_POSITION', ip + delta)
-      end
-    end
+    -- v0.7.27: carry the whole content of this region's CURRENT span (items +
+    -- track automation + normal markers + tempo/timesig) by delta — not just
+    -- media items. Region marker itself is moved separately below.
+    carry_content({{lo = r.pos, hi = r.rend, delta = delta}})
   end
 
   reaper.SetProjectMarker4(0, r.id, true, new_start, new_start + r.len, r.name, r.color_native, 0)
@@ -872,29 +994,17 @@ local function commit_reorder(new_order_ids)
   reaper.Undo_BeginBlock()
   reaper.PreventUIRefresh(1)
 
-  -- Shift each media item whose start falls inside an old region span
-  -- by that region's (target - old) delta. Items outside any region stay put.
-  local n_items = reaper.CountMediaItems(0)
-  local items_in_region, items_shifted = 0, 0
-  for i = 0, n_items - 1 do
-    local item = reaper.GetMediaItem(0, i)
-    local ipos = reaper.GetMediaItemInfo_Value(item, 'D_POSITION')
-    -- v0.7.14: ownership test ported VERBATIM from ArrangeForge commit() PHASE 1
-    -- (the proven content-mover): an item belongs to the region whose span contains
-    -- its START, with a 0.001s tolerance on both edges. Same math AF has shipped
-    -- since day one — the bug was never the mover, it was the drag never reaching it.
-    for rid, opos in pairs(old_pos) do
-      if ipos >= opos - 0.001 and ipos < old_end[rid] + 0.001 then
-        items_in_region = items_in_region + 1
-        local delta = target_pos[rid] - opos
-        if math.abs(delta) > 1e-9 then
-          reaper.SetMediaItemInfo_Value(item, 'D_POSITION', ipos + delta)
-          items_shifted = items_shifted + 1
-        end
-        break
-      end
-    end
+  -- v0.7.27: carry ALL content (media items + track automation + normal markers
+  -- + tempo/timesig) inside each region's OLD span by that region's delta, via
+  -- the proven carry_content primitive. Spans are built from the pre-mutation
+  -- snapshot (old_pos/old_end) so an item relocating into another region's NEW
+  -- position can never be matched twice — carry_content is snapshot-then-apply.
+  -- Replaces the old items-only per-item shuffler (the gap punch #2 closed).
+  local spans = {}
+  for rid, opos in pairs(old_pos) do
+    spans[#spans+1] = {lo = opos, hi = old_end[rid], delta = target_pos[rid] - opos}
   end
+  local cstats = carry_content(spans)
   -- Move region markers to their target positions
   for _, rid in ipairs(new_order_ids) do
     local r = by_id[rid]
@@ -918,9 +1028,10 @@ local function commit_reorder(new_order_ids)
   S.dirty = true
   -- Clean user-facing status (diag stripped v0.7.19 — content-move confirmed live).
   -- Item counts still flow to telemetry (Tel.log) for usage analytics, just not the UI.
-  set_status(string.format('Reordered %d regions (moved %d items)', #new_order_ids, items_shifted))
-  Tel.log('reorder', string.format('{"n":%d,"items_in_region":%d,"items_shifted":%d}',
-    #new_order_ids, items_in_region, items_shifted))
+  set_status(string.format('Reordered %d regions (moved %d items)', #new_order_ids, cstats.items))
+  Tel.log('reorder', string.format(
+    '{"n":%d,"items":%d,"env":%d,"markers":%d,"tempo":%d}',
+    #new_order_ids, cstats.items, cstats.env, cstats.markers, cstats.tempo))
   Tel.log_snapshot(S)
 end
 
@@ -1544,7 +1655,7 @@ local function draw_region_lane()
         and '  [drag = INSERT: reorder, content follows]'
         or  '  [drag = OVERLAY: free place, marker only]'
       tip(('%s%s\n%s  →  %s   (len %s)\n[drag=move · right-edge=resize · dbl-click=rename]'):format(
-        hover_r.name, kind, fmt_time_full(hover_r.pos), fmt_time_full(hover_r.rend), fmt_time_full(hover_r.len)))
+        hover_r.name, kind, fmt_time_full(hover_r.pos), fmt_time_full(hover_r.rend), fmt_time_full(hover_r.len, 'len')))
     else
       local rel = (mx - x1g) / (x2g - x1g)
       if rel < 0 then rel = 0 end; if rel > 1 then rel = 1 end
@@ -1703,38 +1814,43 @@ local function draw_table()
     --     promoted to a double within the same press.
     ImGui.TableSetColumnIndex(ctx, 5)
     if S.gapedit and S.gapedit.id == r.id then
-      ImGui.SetNextItemWidth(ctx, 52)
+      ImGui.SetNextItemWidth(ctx, 60)
       if not S.gapedit.focused then ImGui.SetKeyboardFocusHere(ctx); S.gapedit.focused = true end
+      -- v0.7.28: gap length honours Time/Beats — CharsDecimal dropped (it blocked
+      -- the ':' in MM:SS.mmm and beats' multi-dot form); parse via parse_time_full.
       local gv, gnv = ImGui.InputText(ctx, '##gap_' .. r.id, S.gapedit.buf,
-        ImGui.InputTextFlags_AutoSelectAll | ImGui.InputTextFlags_CharsDecimal)
+        ImGui.InputTextFlags_AutoSelectAll)
       if gv then S.gapedit.buf = gnv end
       if ImGui.IsKeyPressed(ctx, ImGui.Key_Enter) or ImGui.IsKeyPressed(ctx, ImGui.Key_KeypadEnter) then
-        local n = tonumber(S.gapedit.buf)
+        local n = parse_time_full(S.gapedit.buf, 'len')
         if n and n > 0 then S.gap_len = n; add_gap_after(i, n) end
         S.gapedit = nil
       elseif ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then
         S.gapedit = nil
       end
       if ImGui.IsItemHovered(ctx) then
-        tip('Type gap length in seconds · Enter = insert · Esc = cancel')
+        tip('Type gap length (honours Time/Beats) · Enter = insert · Esc = cancel')
       end
     else
       -- single-click = insert last-used gap; double-click = type exact.
       -- Label shows the ACTUAL gap after this region once one exists (e.g.
       -- "2s"), else "+Gap". Plenty of column room (64px).
       local g = gap_after(r)
-      local glabel = (g and g > 0.001) and (('%.3gs'):format(g)) or '+Gap'
+      -- v0.7.28: gap label + tooltips honour the Time/Beats toggle (was '%.3gs').
+      local glabel = (g and g > 0.001) and fmt_time_full(g, 'len') or '+Gap'
       local clicked = ImGui.SmallButton(ctx, glabel .. '##gap_btn_' .. r.id)
       if ImGui.IsItemHovered(ctx) and ImGui.IsMouseDoubleClicked(ctx, 0) then
-        S.gapedit = {id=r.id, buf=('%.3f'):format(S.gap_len):gsub('%.?0+$', ''), focused=false}
+        S.gapedit = {id=r.id, buf=fmt_time_full(S.gap_len, 'len'), focused=false}
       elseif clicked then
         add_gap_after(i, S.gap_len)
       end
       if ImGui.IsItemHovered(ctx) then
         if g and g > 0.001 then
-          tip(('Gap after this region: %.3gs · click adds %.3gs more · double-click to type exact'):format(g, S.gap_len))
+          tip(('Gap after this region: %s · click adds %s more · double-click to type exact')
+              :format(fmt_time_full(g, 'len'), fmt_time_full(S.gap_len, 'len')))
         else
-          tip(('Insert %.3gs gap (click) · double-click to type exact length'):format(S.gap_len))
+          tip(('Insert %s gap (click) · double-click to type exact length')
+              :format(fmt_time_full(S.gap_len, 'len')))
         end
       end
       ImGui.SameLine(ctx, 0, 2)
@@ -1805,7 +1921,7 @@ local function draw_title_bar()
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + avail_w, y1 + bar_h, TITLE_BG_COL)
   ImGui.DrawList_AddRect(dl,       x1, y1, x1 + avail_w, y1 + bar_h, LANE_BORDER_COL)
   -- App name (draw-list text = not an item, so this area stays drag-anywhere)
-  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.26')
+  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.28')
 
   -- ? (help + tooltip-toggle) then X close, top-right inside the band.
   -- The moved-here ? does double duty: hover = full help, click = toggle all
@@ -1845,11 +1961,23 @@ local function draw_toolbar()
 
   -- LEFT: + Region with its own length field
   if ImGui.Button(ctx, '+ Region') then add_region_at_cursor() end
-  if ImGui.IsItemHovered(ctx) then tip('Add a region at the edit cursor, this many seconds long') end
+  if ImGui.IsItemHovered(ctx) then tip('Add a region at the edit cursor, this long (honours Time/Beats)') end
   ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, 'Length')
-  ImGui.SameLine(ctx); ImGui.SetNextItemWidth(ctx, 54)
-  local rv_l, nrl = ImGui.InputDouble(ctx, '##newreglen', S.new_region_len, 0, 0, '%.2f')
-  if rv_l then S.new_region_len = math.max(0.1, nrl) end
+  ImGui.SameLine(ctx); ImGui.SetNextItemWidth(ctx, 64)
+  -- v0.7.28: new-region length entry honours the Time/Beats toggle (was a
+  -- seconds-only InputDouble). Buffer resyncs from the canonical seconds value
+  -- whenever the field is NOT being edited, so a mode flip re-formats it
+  -- (measures.beats <-> MM:SS.mmm) automatically; internal value stays seconds.
+  local rv_l, nv_l = ImGui.InputText(ctx, '##newreglen',
+    S.nrl_buf or fmt_time_full(S.new_region_len, 'len'))
+  if rv_l then S.nrl_buf = nv_l end
+  if not ImGui.IsItemActive(ctx) then S.nrl_buf = fmt_time_full(S.new_region_len, 'len') end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then
+    local parsed = parse_time_full(S.nrl_buf, 'len')
+    if parsed and parsed > 0 then S.new_region_len = math.max(0.1, parsed) end
+    S.nrl_buf = fmt_time_full(S.new_region_len, 'len')
+  end
+  if ImGui.IsItemHovered(ctx) then tip('New region length — honours the Time/Beats toggle') end
 
   -- CENTER: the two mode toggles, labelled by what they act on — "regions" (the
   -- Insert/Overlay arrange behaviour) and "items" (how overlapping audio reads).
