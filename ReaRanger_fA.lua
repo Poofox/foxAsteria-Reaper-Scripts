@@ -1,7 +1,115 @@
 -- @description ReaRanger fA - Realtime Region List Editor
 -- @author foxAsteria
--- @version 0.7.28
+-- @version 0.7.39
 -- @changelog
+--   v0.7.39 (2026-06-18) — per-digit drag refinement + gap-cell drag.
+--     * Per-digit time drag now changes ONLY the hovered place (minutes / seconds /
+--       ms) and CLAMPS within it — no carry into the neighbouring place. Dragging
+--       seconds rolls 0–59 and stays in the same minute; ms stays 0–999.
+--     * Ctrl-fine DROPPED (Poofox: "just makes it slower") — restrict-to-place is the
+--       precision model now.
+--     * GAP cell is now a draggable per-digit time value once a gap exists (same feel
+--       as start/length): drag a digit to resize (ripple on release), double-click to
+--       type exact, drag/type to 0 closes it. "+Gap" button stays for creating one.
+--       New helpers close_gap_after (partial ripple-close) + set_gap_after (absolute).
+--   v0.7.38 (2026-06-18) — multi-select + split-snap toggle + 3-way removal.
+--     * SPLIT-SNAP MAGNET toggle (toolbar center): ON = SHIFT-drag split snaps to
+--       the project grid (clean bar landing); OFF = drop the new region anywhere
+--       (free split, no snap). Default ON.
+--     * LIST MULTI-SELECT: click = select · Ctrl+click = add/toggle · Shift+click =
+--       range from the anchor. Whole selection highlights in list + lane.
+--     * REMOVAL is now 3 options (right-click region, list or lane): "Remove region"
+--       (marker only — timeline untouched), "Remove region + content (leave gap)",
+--       "Remove region + content + gap" (ripple-close). Applies to the whole
+--       multi-selection at once when the clicked region is part of it. One undo each.
+--     * ALT-click erase = marker only, nothing else changes (now id-based delete).
+--   v0.7.37 (2026-06-18) — selection highlight made clearly visible on BOTH surfaces:
+--     the list row tint was brightened (muted olive → warm amber), and the lane block
+--     now gets a translucent warm fill on top of its bright border (the thin border
+--     alone was easy to miss). Select a region anywhere → it pops in list + lane.
+--     Also: +Region now auto-selects the region it just created (highlight + time-sel).
+--     Also: new-region LENGTH field in beats mode now accepts a bare beat count
+--     (tempo-aware fallback) — REAPER's measures.beats parser was rejecting edits
+--     and pinning the length at the 4.0s default.
+--     Also: SHIFT-drag split-create now snaps to the project GRID (grid lines only,
+--     not region edges/markers — computed via QN). The lane spans the whole project,
+--     so raw drags produced wild huge spans that never sat inside one region (→ no
+--     split). Grid snap makes dragged regions land cleanly on bars at any zoom so
+--     mid-region splits actually fire. ALT erase-click stays raw.
+--   v0.7.36 (2026-06-18) — added SHOW-IN-LANES toggle in the toolbar center (next
+--     to crossfade): bound to REAPER option 40507 "Show overlapping media items in
+--     lanes (when room)". Icon reflects REAPER's state, click flips it; self-guards
+--     if the option is unavailable on the build.
+--   v0.7.35 (2026-06-18) — split moved to SHIFT-drag (Shift = REAPER's no-snap
+--     modifier, so it reads naturally as "place exactly here"). ALT stays as the
+--     erase-click. Split still uses raw cursor time (no snap).
+--   v0.7.34 (2026-06-18) — alt-split bypasses snapping (it was forcing the split
+--     span to region edges, so a mid-region split was impossible). Alt drag now
+--     uses raw cursor time, no maybe_snap.
+--   v0.7.33 (2026-06-18) — gap removal + gap highlighting.
+--     * Gaps between regions are now faintly highlighted on the lane (warm tint +
+--       thin border) so they read as targets.
+--     * Right-click a gap → "Remove gap (X)" — ripple-deletes that empty span so
+--       later content + region markers pull left by the gap length (inverse of the
+--       +Gap insert). Undo-wrapped.
+--   v0.7.32 (2026-06-18) — gesture-driven lanes, alt split/erase, removal.
+--     * Overlap/insert TOGGLE REMOVED. The drag gesture decides: sideways (same
+--       lane) = ripple-reorder; drag a region into a DIFFERENT lane row = stack it
+--       there (overlap), and the DRAGGED region keeps that lane (S.lane_pref →
+--       pack_lanes honors it, instead of bumping the in-the-way region).
+--     * +Region now always INSERTS (ripples space open — no accidental lanes).
+--     * ALT-drag on the lane = create a new region over the dragged span; if it
+--       lands strictly inside a region, that region splits into <name>-a / New
+--       Region / <name>-b. ALT-click a region = erase marker only (content stays).
+--     * Removal: right-click a region (lane OR list name) → "Remove region (keep
+--       content)" / "Remove region + content (leave gap)". The latter deletes the
+--       media items fully inside the span and the marker, leaving silence.
+--     * Help text + tooltips rewritten for the gesture model; crossfade toggle kept.
+--   v0.7.31 (2026-06-18) — selection, add-region mode, glyph + undo fixes.
+--     * SELECT a region: click a list row OR a lane block → highlights it in
+--       ReaRanger (row tint + bright lane border) AND selects it in the project
+--       (sets the time selection to the region span). Reverse-synced: when
+--       REAPER's time selection matches a region, that row lights up — so you can
+--       pick a region in the timeline, see which it is, then +Gap on that row.
+--     * Lane CLICK: empty space now moves the edit cursor; clicking a region
+--       SELECTS it (was: always moved the cursor).
+--     * +Region honours the overlap toggle: NOT-OVERLAP = INSERT (opens space at
+--       the cursor, ripples later content/markers right — no more accidental
+--       lanes); OVERLAP = drop as-is. (Fixes "add region adds lanes".)
+--     * +Region glyph no longer faded (it's an action, one state) + drawn as a
+--       closed region block (top edge added) so it reads as a region, not an "H".
+--     * Beats glyph = two beamed eighth notes instead of the snare (read as a TV).
+--     * Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y now dispatch REAPER undo/redo explicitly
+--       (40029/40030) — the WantCaptureKeyboard release alone didn't pass through.
+--   v0.7.30 (2026-06-17) — icon toolbar + 2-way overlap toggle + resync.
+--     * ICON TOOLBAR: +Region, Time/Beats and the overlap toggle are now
+--       hand-drawn DrawList glyphs (no text). +Region = "+" plus a region span
+--       (bar w/ end caps); Time/Beats = clock (time) / snare drum (beats);
+--       overlap toggle = two corner-offset shaded rects; not-overlap = two rects
+--       with a gap. Light, low-contrast styling with a few greys — more contrast
+--       when ON than OFF. Icons are frame-height so the row lines up.
+--     * OVERLAP TOGGLE: 2-way EXCLUSIVE — OVERLAP / NOT OVERLAP (replaces the old
+--       Insert/Lanes + Xfade/Overlap buttons; free-position dropped). S.region_mode
+--       is source of truth; also sets the drag mode (lane_mode).
+--     * CROSSFADE: standalone on/off icon toggle (bezier-X glyph, shaded lens),
+--       set apart from the overlap pair. Bound to REAPER's own auto-crossfade
+--       option (40912) — the icon reflects the REAPER state and clicking flips it
+--       (self-guards if unavailable). User-driven; not forced on drags.
+--     * RESYNC: the poll now detects regions MOVED / RESIZED / RENAMED / RECOLORED
+--       directly in REAPER (was count-only → only saw add/remove). Cheap
+--       GetProjectStateChangeCount gate, then a region content signature; guarded
+--       against reloading mid drag/rename. No manual refresh button needed.
+--     * TOOLTIPS: fixed stale "OVERLAY … marker only" hints — free-mode drags
+--       MOVE CONTENT (since v0.7.14); renamed to FREE/CROSSFADE/LANES to match the
+--       new toggle. HELP_TEXT updated.
+--   v0.7.29 (2026-06-17) — Docking + keyboard passthrough.
+--     * Keyboard passthrough: when you're not typing in a field, ReaRanger now
+--       releases ImGui's keyboard capture so REAPER's own shortcuts work while the
+--       window is focused — Ctrl+Z undo, space = play, etc. (was swallowed before).
+--     * Docking: right-click the title band → Dock / Undock. A docked window is
+--       managed by REAPER (no custom drag-move / NoMove while docked); undock→redock
+--       returns to the same docker. Drag a floating window onto a REAPER docker to
+--       dock natively. Title-band right-click menu also has Close.
 --   v0.7.28 (2026-06-16) — Length/duration entry honours the Time/Beats toggle
 --     everywhere (was seconds-only in three spots): the +Region length field,
 --     the gap field (button label + type-exact entry + tooltips), and the lane
@@ -272,6 +380,11 @@ local TITLE_TEXT_COL     = 0xE6E6E6FF  -- title-bar text (app name + info line) 
 local OVERLAY_BORDER_COL = 0xE0E0E0FF  -- brighter border = overlay/marker region (lane > 0)
 local INSERT_CARET_COL   = 0xFFFFFFFF  -- pure-white insertion caret (insert-mode drop slot)
 local INSERT_GHOST_COL   = 0xFFFFFF44  -- translucent landing rect at the insert slot
+local SEL_BORDER_COL     = 0xFFE066FF  -- selected region: warm bright border (lane)
+local SEL_FILL_COL       = 0xFFE0664D  -- selected region: translucent warm fill over the lane block (v0.7.37)
+local SEL_ROW_COL        = 0x8A7630FF  -- selected region: list-row background tint (v0.7.37: brightened warm amber — old olive was too subtle to see)
+local GAP_FILL_COL       = 0xFFC04018  -- gap between regions: faint warm fill (lane row 0)
+local GAP_BORDER_COL     = 0xFFC04055  -- gap: thin warm border so it reads as clickable
 local DEFAULT_GAP_LEN   = 2.0           -- seconds (matches AF DEFAULT_GAP_LEN)
 local DRAG_PX_PER_SNAP  = 12            -- pixels of vertical drag to advance one grid step
 local DRAG_PX_PER_DIGIT = 7             -- pixels of vertical drag per per-digit place step (v0.7.17)
@@ -436,6 +549,14 @@ local S = {
   regions = {},               -- ordered by current timeline pos
   last_marker_count = -1,
   last_poll_t = 0,
+  last_state_count = -1,        -- reaper.GetProjectStateChangeCount snapshot (cheap pre-check)
+  last_region_sig = nil,        -- signature of region set — detects external move/rename/resize/recolor (v0.7.30)
+  region_mode = 'overlap',      -- 2-way toggle: 'overlap' | 'nonoverlap'. v0.7.30
+  sel_id = nil,                 -- ANCHOR selected region id (v0.7.31): click a region (list/lane) → select in project (time-sel) + highlight; reverse-synced from REAPER time selection. Drives time-sel + shift-range anchor.
+  sel_set = {},                 -- [region_id]=true, the full multi-selection (v0.7.38). List: plain click=replace, Ctrl=toggle, Shift=range from anchor. Highlight + bulk removal use this set; sel_id is the anchor within it.
+  split_snap = true,            -- v0.7.38: magnet toggle. ON = SHIFT-drag split-create snaps to the project grid (clean bar landing). OFF = drop anywhere raw (free split).
+  lane_pref = {},               -- [region_id] = lane row the user dragged it to (v0.7.32). Honored by pack_lanes; nil = auto-pack.
+  alt_drag = nil,               -- {start_x, start_t, over_id, moved} during an ALT split-create / erase gesture (v0.7.32)
   dirty = true,
   edit_name = {},             -- [region_id] = string buffer for in-flight name edit
   drag_src = nil,             -- index in S.regions currently being dragged
@@ -447,13 +568,20 @@ local S = {
   gapedit = nil,              -- {id=rid, buf=str, focused=bool} during per-row type-gap (#4)
   time_mode = 'time',         -- 'time' = MM:SS.mmm · 'beats' = measures.beats (#5 toggle)
   lane_mode = 'insert',       -- 'insert' = lane move reorders+ripples content (arranger) · 'overlay' = free place / stack
-  overlap_mode = 'overlap',   -- when overlay-placed regions overlap: 'overlap' = hard stack · 'crossfade' = REAPER auto-crossfade
   new_region_len = 4.0,       -- length (s) for "+ Region at cursor"
   tooltips_on = true,         -- master toggle for hover tooltips (? button by the X)
   status_msg = '',
   status_t = 0,
   win_drag = nil,             -- {wx, wy} window pos at drag start (drag-anywhere)
   want_close = false,
+  -- Docking (v0.7.29). is_docked is read each frame from ImGui.IsWindowDocked.
+  -- dock_apply/dock_target = one-shot request to SetNextWindowDockID next frame
+  -- (right-click toggle). last_dock_id remembers the docker so undock→redock
+  -- returns to the same place; -1 = "a REAPER docker" for the first-ever dock.
+  is_docked = false,
+  dock_apply = false,
+  dock_target = 0,
+  last_dock_id = -1,
 }
 
 local function set_status(msg)
@@ -464,6 +592,23 @@ end
 -- ====================================================================
 -- Region IO
 -- ====================================================================
+-- Cheap content signature of the project's region set (each region's
+-- id / pos / end / color / name). The bare marker COUNT only catches add/remove;
+-- this also catches a region MOVED, RESIZED, RENAMED, or RECOLORED directly in
+-- REAPER — so the list/lane stays in sync with the arrange view. v0.7.30.
+local function region_signature()
+  local parts, i = {}, 0
+  while true do
+    local ok, isrgn, pos, rend, name, idx, color = reaper.EnumProjectMarkers3(0, i)
+    if ok == 0 then break end
+    if isrgn then
+      parts[#parts + 1] = string.format('%d:%.4f:%.4f:%d:%s', idx, pos, rend, color, name)
+    end
+    i = i + 1
+  end
+  return table.concat(parts, '|')
+end
+
 local function load_regions()
   S.regions = {}
   local i = 0
@@ -486,14 +631,45 @@ local function load_regions()
   end
   table.sort(S.regions, function(a, b) return a.pos < b.pos end)
   S.last_marker_count = reaper.CountProjectMarkers(0)
+  -- re-baseline the change detectors so a reload (ours or external) doesn't
+  -- immediately re-trigger itself
+  S.last_region_sig  = region_signature()
+  S.last_state_count = reaper.GetProjectStateChangeCount(0)
   S.dirty = false
 end
 
 local function maybe_poll()
+  -- Never resync mid-interaction — reloading would clobber an in-flight
+  -- drag / list-reorder / rename.
+  if S.lane_drag or S.drag_src or S.rename then return end
   local t = reaper.time_precise()
   if t - S.last_poll_t < POLL_INTERVAL then return end
   S.last_poll_t = t
-  if reaper.CountProjectMarkers(0) ~= S.last_marker_count then S.dirty = true end
+  -- Compare a fresh region signature every tick. (The old
+  -- GetProjectStateChangeCount pre-gate was dropped 2026-06-18: some marker edits
+  -- don't bump that counter, so changes silently slipped through and the list
+  -- never refreshed. The signature itself is the reliable detector; enumerating
+  -- markers twice a second is cheap.)
+  local sig = region_signature()
+  if sig ~= S.last_region_sig then
+    S.last_region_sig = sig
+    S.dirty = true
+  end
+  -- v0.7.31: reverse-sync selection — if REAPER's time selection exactly spans a
+  -- region (e.g. user double-clicked it in the ruler), light that row up in the
+  -- list. Cheap: one GetSet read + a linear scan twice a second.
+  local ts_a, ts_b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+  if ts_b > ts_a then
+    for _, r in ipairs(S.regions) do
+      if math.abs(r.pos - ts_a) < 1e-4 and math.abs(r.rend - ts_b) < 1e-4 then
+        -- v0.7.38: don't clobber a multi-selection — only make it the sole
+        -- selection if it wasn't already part of the set (i.e. user picked it in
+        -- REAPER's ruler). Otherwise just move the anchor.
+        if not S.sel_set[r.id] then S.sel_set = { [r.id] = true } end
+        S.sel_id = r.id; break
+      end
+    end
+  end
 end
 
 -- ====================================================================
@@ -522,6 +698,27 @@ local function grid_step_sec()
   return (division * 4 * 60) / bpm
 end
 
+-- Snap a time to the nearest project GRID line only (bar/beat division). Unlike
+-- reaper.SnapToGrid this does NOT snap to region edges / markers — that marker
+-- snapping is exactly why v0.7.34 had to drop snapping to allow mid-region splits.
+-- v0.7.37: the shift-drag split-create snaps to grid so dragged regions land
+-- cleanly on bars at any zoom (the lane spans the whole project → raw drags were
+-- wild huge spans). Computed via QN so it's tempo/time-sig aware.
+local function snap_to_grid_only(t)
+  if t < 0 then t = 0 end
+  if not (reaper.TimeMap2_timeToQN and reaper.TimeMap2_QNToTime) then return t end
+  local division = 0.25
+  if reaper.GetSetProjectGrid then
+    local _, div = reaper.GetSetProjectGrid(0, false)
+    if div and div > 0 then division = div end
+  end
+  local step_qn = division * 4          -- division is in whole-notes; ×4 → quarter-notes
+  if step_qn <= 0 then return t end
+  local qn = reaper.TimeMap2_timeToQN(0, t)
+  local snapped = math.floor(qn / step_qn + 0.5) * step_qn
+  return reaper.TimeMap2_QNToTime(0, snapped)
+end
+
 -- ====================================================================
 -- Native-ripple hybrid (v0.7.1): content moves with regions.
 -- We force ripple-all around a content-moving action, then restore the
@@ -541,16 +738,6 @@ local function set_ripple_mode(m)
   elseif m == 2 then reaper.Main_OnCommand(40311, 0) end
 end
 
--- Auto-crossfade option (40912 = "Options: Auto-crossfade media items when
--- editing"). Self-guarding: GetToggleCommandState returns -1 if the id isn't
--- valid on this build → we no-op rather than fire a wrong command. Only toggles
--- when the current state differs from what overlap_mode wants.
-local AUTOXFADE_CMD = 40912
-local function set_autoxfade(on)
-  local st = reaper.GetToggleCommandState(AUTOXFADE_CMD)
-  if st == -1 then return end
-  if (st == 1) ~= (on == true) then reaper.Main_OnCommand(AUTOXFADE_CMD, 0) end
-end
 
 local function with_ripple_all(fn)
   local prev = get_ripple_mode()
@@ -849,9 +1036,8 @@ local function duplicate_region(r, new_start, mode)
         rr.pos = rr.pos + r.len; rr.rend = rr.rend + r.len
       end
     end
-  else
-    set_autoxfade(S.overlap_mode == 'crossfade')
   end
+  -- v0.7.30: no longer force REAPER's auto-crossfade pref on a free/overlap clone.
 
   local n_items = clone_snapshot(snap, delta)
   reaper.AddProjectMarker2(0, true, new_start, new_start + r.len, r.name,
@@ -892,13 +1078,170 @@ local function apply_color(r, rgba)
   Tel.log('color')
 end
 
+-- ALT-click / "Remove region": marker ONLY. Nothing else in the timeline changes —
+-- content stays exactly put, no ripple, no gap close (Poofox, v0.7.38). id-based
+-- (DeleteProjectMarker) not enum_i, so a stale enumeration index can't nuke the
+-- wrong marker.
 local function delete_region(r)
   if not r then return end
   reaper.Undo_BeginBlock()
-  reaper.DeleteProjectMarkerByIndex(0, r.enum_i)
-  reaper.Undo_EndBlock('ReaRanger: delete region', -1)
+  reaper.DeleteProjectMarker(0, r.id, true)
+  reaper.Undo_EndBlock('ReaRanger: remove region (marker only)', -1)
+  S.lane_pref[r.id] = nil
+  S.sel_set[r.id] = nil
+  if S.sel_id == r.id then S.sel_id = nil end
   S.dirty = true
   Tel.log('delete')
+end
+
+-- v0.7.32: remove the region marker AND the media items inside its span, leaving
+-- a gap (per Poofox). Only items FULLY within [pos,rend] are deleted; items that
+-- straddle a boundary are left alone. Undo-wrapped.
+local function remove_region_with_content(r)
+  if not r then return end
+  reaper.Undo_BeginBlock()
+  reaper.PreventUIRefresh(1)
+  local n = 0
+  for ti = reaper.CountTracks(0) - 1, 0, -1 do
+    local tr = reaper.GetTrack(0, ti)
+    for ii = reaper.CountTrackMediaItems(tr) - 1, 0, -1 do
+      local it   = reaper.GetTrackMediaItem(tr, ii)
+      local ipos = reaper.GetMediaItemInfo_Value(it, 'D_POSITION')
+      local iend = ipos + reaper.GetMediaItemInfo_Value(it, 'D_LENGTH')
+      if ipos >= r.pos - 1e-6 and iend <= r.rend + 1e-6 then
+        reaper.DeleteTrackMediaItem(tr, it); n = n + 1
+      end
+    end
+  end
+  reaper.DeleteProjectMarker(0, r.id, true)
+  reaper.PreventUIRefresh(-1)
+  reaper.UpdateArrange()
+  reaper.Undo_EndBlock('ReaRanger: remove region + content', -1)
+  S.lane_pref[r.id] = nil
+  S.dirty = true
+  set_status(('Removed region + %d item%s (gap left): %s'):format(n, n == 1 and '' or 's', r.name))
+  Tel.log('remove_with_content', string.format('{"id":%d,"items":%d}', r.id, n))
+end
+
+-- ── Bulk-capable removal (v0.7.38) ───────────────────────────────────────────
+-- Three kinds, applied to one region or a whole multi-selection:
+--   'marker'      — delete the region marker only; timeline untouched.
+--   'content'     — delete the region + the media items fully inside its span,
+--                   leaving the gap (later content stays put).
+--   'content_gap' — as 'content', then ripple-close the gap so later content +
+--                   markers pull left by the region length.
+local function sel_count()
+  local n = 0; for _ in pairs(S.sel_set) do n = n + 1 end; return n
+end
+
+-- Delete media items fully within [pos,rend] across all tracks. Returns the count.
+local function delete_items_in_span(pos, rend)
+  local n = 0
+  for ti = reaper.CountTracks(0) - 1, 0, -1 do
+    local tr = reaper.GetTrack(0, ti)
+    for ii = reaper.CountTrackMediaItems(tr) - 1, 0, -1 do
+      local it   = reaper.GetTrackMediaItem(tr, ii)
+      local ipos = reaper.GetMediaItemInfo_Value(it, 'D_POSITION')
+      local iend = ipos + reaper.GetMediaItemInfo_Value(it, 'D_LENGTH')
+      if ipos >= pos - 1e-6 and iend <= rend + 1e-6 then
+        reaper.DeleteTrackMediaItem(tr, it); n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+-- Ripple-close the span [pos,rend]: remove that (now empty) time range so later
+-- content pulls left, then slide every marker/region at/after `rend` left by the
+-- span length. Markers are enumerated FRESH (not from stale S.regions) so this is
+-- safe to call repeatedly within a bulk loop.
+local function ripple_close_span(pos, rend)
+  local len = rend - pos
+  if len <= 1e-9 then return end
+  with_ripple_all(function()
+    local ts_a, ts_b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+    reaper.GetSet_LoopTimeRange(true, false, pos, rend, false)
+    reaper.Main_OnCommand(40201, 0)   -- remove time selection (ripple): later content pulls left
+    reaper.GetSet_LoopTimeRange(true, false, ts_a, ts_b, false)
+  end)
+  local i = 0
+  while true do
+    local ok, isrgn, mpos, mend, name, idx, color = reaper.EnumProjectMarkers3(0, i)
+    if ok == 0 then break end
+    if mpos >= rend - 1e-6 then
+      reaper.SetProjectMarker4(0, idx, isrgn, mpos - len, isrgn and (mend - len) or 0, name, color, 0)
+    end
+    i = i + 1
+  end
+end
+
+local function apply_removal(targets, kind)
+  if not targets or #targets == 0 then return end
+  -- Process right-to-left so a ripple-close never shifts the position of a
+  -- not-yet-removed region to its left.
+  table.sort(targets, function(a, b) return a.pos > b.pos end)
+  reaper.Undo_BeginBlock()
+  reaper.PreventUIRefresh(1)
+  local nitems = 0
+  for _, r in ipairs(targets) do
+    if kind == 'content' or kind == 'content_gap' then
+      nitems = nitems + delete_items_in_span(r.pos, r.rend)
+    end
+    reaper.DeleteProjectMarker(0, r.id, true)
+    if kind == 'content_gap' then ripple_close_span(r.pos, r.rend) end
+    S.lane_pref[r.id] = nil
+    S.sel_set[r.id] = nil
+    if S.sel_id == r.id then S.sel_id = nil end
+  end
+  reaper.PreventUIRefresh(-1)
+  reaper.UpdateArrange(); reaper.UpdateTimeline()
+  local label = (kind == 'marker') and 'remove region (marker only)'
+             or (kind == 'content') and 'remove region + content (leave gap)'
+             or 'remove region + content + gap'
+  reaper.Undo_EndBlock(('ReaRanger: %s%s'):format(label, #targets > 1 and (' ×' .. #targets) or ''), -1)
+  S.dirty = true
+  set_status(('%s — %d region%s%s'):format(label, #targets, #targets == 1 and '' or 's',
+    nitems > 0 and (', ' .. nitems .. ' item' .. (nitems == 1 and '' or 's')) or ''))
+  Tel.log('removal', string.format('{"kind":"%s","n":%d,"items":%d}', kind, #targets, nitems))
+end
+
+-- Targets for a right-click removal: the whole multi-selection if the clicked
+-- region is part of it (and >1 selected), else just the clicked region.
+local function removal_targets(clicked)
+  if clicked and S.sel_set[clicked.id] and sel_count() > 1 then
+    local t = {}
+    for _, rr in ipairs(S.regions) do if S.sel_set[rr.id] then t[#t + 1] = rr end end
+    return t
+  end
+  return { clicked }
+end
+-- (removal_menu needs `ctx`, so it's defined just after ctx is created — below.)
+
+-- v0.7.32: ALT-drag created a new region spanning [t1,t2]. If that span sits
+-- STRICTLY inside an existing region, split the host into <name>-a (left) and
+-- <name>-b (right) around the new region; the new region itself is 'New Region'.
+-- Outside any region (or overlapping a boundary) it's just added (may overlap).
+local function alt_create_split(t1, t2)
+  if t2 < t1 then t1, t2 = t2, t1 end
+  if (t2 - t1) < 1e-4 then return end
+  reaper.Undo_BeginBlock()
+  local host
+  for _, rr in ipairs(S.regions) do
+    if t1 > rr.pos + 1e-4 and t2 < rr.rend - 1e-4 then host = rr; break end
+  end
+  if host then
+    -- host shrinks to its left half (Foo-a); add the right half (Foo-b)
+    reaper.SetProjectMarker4(0, host.id, true, host.pos, t1, host.name .. '-a', host.color_native, 0)
+    reaper.AddProjectMarker2(0, true, t2, host.rend, host.name .. '-b', -1, host.color_native)
+  end
+  reaper.AddProjectMarker2(0, true, t1, t2, 'New Region', -1, 0)
+  reaper.UpdateArrange()
+  reaper.Undo_EndBlock('ReaRanger: alt-drag split region', -1)
+  S.dirty = true
+  set_status(host and ('Split %s → %s-a / New Region / %s-b'):format(host.name, host.name, host.name)
+                   or 'Added region (alt-drag)')
+  Tel.log('alt_split', string.format('{"t1":%.3f,"t2":%.3f,"host":%s}',
+    t1, t2, host and ('"' .. host.name .. '"') or 'null'))
 end
 
 -- Add Gap After row i: opens `len` seconds of silence starting at region i's end.
@@ -955,14 +1298,155 @@ local function gap_after(r)
   return nil
 end
 
+-- v0.7.33: remove the gap AFTER region i — ripple-delete the empty span so later
+-- content + region markers pull left by the gap length (inverse of add_gap_after).
+local function remove_gap_after(i)
+  if not i or i < 1 or i > #S.regions then return end
+  local r = S.regions[i]
+  local gap = gap_after(r)
+  if not gap or gap <= 1e-6 then return end
+  local gap_start = r.rend
+
+  reaper.Undo_BeginBlock()
+  reaper.PreventUIRefresh(1)
+  with_ripple_all(function()
+    local ts_a, ts_b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+    reaper.GetSet_LoopTimeRange(true, false, gap_start, gap_start + gap, false)
+    reaper.Main_OnCommand(40201, 0)   -- remove empty span: later items pull left
+    reaper.GetSet_LoopTimeRange(true, false, ts_a, ts_b, false)
+  end)
+  -- markers untouched by ripple — slide the ones at/after the gap left by `gap`
+  for _, o in ipairs(S.regions) do
+    if o.pos >= gap_start + gap - 1e-6 then
+      reaper.SetProjectMarker4(0, o.id, true, o.pos - gap, o.rend - gap, o.name, o.color_native, 0)
+      o.pos = o.pos - gap; o.rend = o.rend - gap
+    end
+  end
+  reaper.PreventUIRefresh(-1)
+  reaper.UpdateArrange(); reaper.UpdateTimeline()
+  reaper.Undo_EndBlock(('ReaRanger: remove %.3fs gap after row %d (content+markers)'):format(gap, i), -1)
+  S.dirty = true
+  set_status(('Removed %.2fs gap after row %d (content pulled left)'):format(gap, i))
+  Tel.log('remove_gap', string.format('{"row":%d,"len":%.3f}', i, gap))
+end
+
+-- v0.7.39: close `amount` seconds of the gap after row i (partial inverse of
+-- add_gap_after). Generalises remove_gap_after so the gap cell can be DRAG-resized
+-- smaller without nuking the whole gap. Clamps amount to the existing gap.
+local function close_gap_after(i, amount)
+  if not i or i < 1 or i > #S.regions then return end
+  local r = S.regions[i]
+  local gap = gap_after(r)
+  if not gap or gap <= 1e-6 then return end
+  if amount > gap then amount = gap end
+  if amount <= 1e-6 then return end
+  local gap_start = r.rend
+  reaper.Undo_BeginBlock()
+  reaper.PreventUIRefresh(1)
+  with_ripple_all(function()
+    local ts_a, ts_b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+    reaper.GetSet_LoopTimeRange(true, false, gap_start, gap_start + amount, false)
+    reaper.Main_OnCommand(40201, 0)   -- remove empty span: later items pull left
+    reaper.GetSet_LoopTimeRange(true, false, ts_a, ts_b, false)
+  end)
+  for _, o in ipairs(S.regions) do
+    if o.pos >= gap_start + amount - 1e-6 then
+      reaper.SetProjectMarker4(0, o.id, true, o.pos - amount, o.rend - amount, o.name, o.color_native, 0)
+      o.pos = o.pos - amount; o.rend = o.rend - amount
+    end
+  end
+  reaper.PreventUIRefresh(-1)
+  reaper.UpdateArrange(); reaper.UpdateTimeline()
+  reaper.Undo_EndBlock(('ReaRanger: close %.3fs of gap after row %d'):format(amount, i), -1)
+  S.dirty = true
+  Tel.log('remove_gap', string.format('{"row":%d,"len":%.3f}', i, amount))
+end
+
+-- v0.7.39: set the gap after row i to an absolute `target` (drag/type on the gap
+-- cell). Grows via add_gap_after, shrinks via close_gap_after. target<=0 ⇒ close all.
+local function set_gap_after(i, target)
+  local r = S.regions[i]; if not r then return end
+  if target < 0 then target = 0 end
+  local cur = gap_after(r) or 0
+  local delta = target - cur
+  if math.abs(delta) < 0.0005 then return end
+  if delta > 0 then add_gap_after(i, delta) else close_gap_after(i, -delta) end
+end
+
 local function add_region_at_cursor()
   local pos = reaper.GetCursorPosition()
   local len = math.max(0.1, S.new_region_len or 4.0)   -- length from the toolbar field
+  -- v0.7.32: +Region always INSERTS (the overlap/insert toggle is gone — overlap
+  -- is now opt-in via a lane-drag or alt-drag). Open `len` of space at the cursor
+  -- so existing content + later region markers shift right; the new region drops
+  -- into the cleared span (no accidental lanes). Mirrors add_gap_after.
   reaper.Undo_BeginBlock()
-  reaper.AddProjectMarker2(0, true, pos, pos + len, 'New Region', -1, 0)
+  reaper.PreventUIRefresh(1)
+  with_ripple_all(function()
+    local ts_a, ts_b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+    reaper.GetSet_LoopTimeRange(true, false, pos, pos + len, false)
+    reaper.Main_OnCommand(40200, 0)   -- insert empty space (ripple-all)
+    reaper.GetSet_LoopTimeRange(true, false, ts_a, ts_b, false)
+  end)
+  -- ripple doesn't touch region markers — slide the ones at/after the cursor
+  for _, r in ipairs(S.regions) do
+    if r.pos >= pos - 1e-6 then
+      reaper.SetProjectMarker4(0, r.id, true, r.pos + len, r.rend + len, r.name, r.color_native, 0)
+      r.pos = r.pos + len; r.rend = r.rend + len
+    end
+  end
+  local new_idx = reaper.AddProjectMarker2(0, true, pos, pos + len, 'New Region', -1, 0)
+  reaper.PreventUIRefresh(-1)
+  reaper.UpdateArrange(); reaper.UpdateTimeline()
   reaper.Undo_EndBlock('ReaRanger: add region', -1)
+  -- v0.7.37: select the freshly-added region immediately (highlight in list + lane,
+  -- + project time-sel) so it's the active region without a manual click. id == the
+  -- marker index AddProjectMarker2 returns, which is what load_regions stores as r.id.
+  S.sel_id = new_idx
+  S.sel_set = { [new_idx] = true }   -- v0.7.38: sole selection
+  reaper.GetSet_LoopTimeRange(true, false, pos, pos + len, false)
   S.dirty = true
   Tel.log('add_region', string.format('{"pos":%.3f,"len":%.3f}', pos, len))
+end
+
+-- v0.7.31 — Selection. Clicking a region (list row or lane block) selects it:
+-- highlight in ReaRanger AND select it in the project by setting the time
+-- selection to the region span (the natural "selected region" in REAPER — what
+-- double-clicking a region in the ruler does). Does NOT move the edit cursor
+-- (empty-space clicks do that). Reverse-synced in maybe_poll: when REAPER's time
+-- selection matches a region, that row lights up in the list.
+-- v0.7.38: multi-select. mods (ImGui key-mods bitmask, optional) decides:
+--   none  → replace selection with just r (r becomes anchor)
+--   Ctrl  → toggle r in the selection (r becomes anchor)
+--   Shift → range from the current anchor to r in list order, ADDED to the set
+-- The project time-selection follows the clicked region. Callers with no mods
+-- (lane click, +Region auto-select) get plain single-select.
+local function select_region(r, mods)
+  if not r then return end
+  mods = mods or 0
+  local shift = (mods & ImGui.Mod_Shift) ~= 0
+  local ctrl  = (mods & ImGui.Mod_Ctrl) ~= 0
+  if shift and S.sel_id then
+    local ai, ci
+    for idx, rr in ipairs(S.regions) do
+      if rr.id == S.sel_id then ai = idx end
+      if rr.id == r.id then ci = idx end
+    end
+    if ai and ci then
+      for idx = math.min(ai, ci), math.max(ai, ci) do S.sel_set[S.regions[idx].id] = true end
+    else
+      S.sel_set[r.id] = true
+    end
+    -- anchor unchanged so the range can be re-dragged
+  elseif ctrl then
+    if S.sel_set[r.id] then S.sel_set[r.id] = nil else S.sel_set[r.id] = true end
+    S.sel_id = r.id
+  else
+    S.sel_set = { [r.id] = true }
+    S.sel_id = r.id
+  end
+  reaper.GetSet_LoopTimeRange(true, false, r.pos, r.rend, false)
+  reaper.UpdateTimeline()
 end
 
 -- Reorder commit: takes new order of region IDs and re-lays them out
@@ -1072,6 +1556,16 @@ ImGui.Attach(ctx, FONT_BOLD)
 -- by the X can switch them off. ctx is the module-local above.
 local function tip(s) if S.tooltips_on then ImGui.SetTooltip(ctx, s) end end
 
+-- Render the 3-option removal menu (shared by the lane + list context menus).
+-- Defined here (not next to removal_targets) because it needs the module-local ctx.
+local function removal_menu(clicked)
+  local t = removal_targets(clicked)
+  local suffix = (#t > 1) and (' (' .. #t .. ' regions)') or ''
+  if ImGui.Selectable(ctx, 'Remove region' .. suffix) then apply_removal(t, 'marker') end
+  if ImGui.Selectable(ctx, 'Remove region + content (leave gap)' .. suffix) then apply_removal(t, 'content') end
+  if ImGui.Selectable(ctx, 'Remove region + content + gap' .. suffix) then apply_removal(t, 'content_gap') end
+end
+
 -- ====================================================================
 -- Greyscale, mid-contrast, no-dark theme. Pushed at frame begin, popped at end.
 -- ====================================================================
@@ -1144,7 +1638,16 @@ local function parse_time_full(str, kind)
   if S.time_mode == 'beats' then
     local v = (kind == 'len') and reaper.parse_timestr_len(str, 0, 2)
                                or  reaper.parse_timestr_pos(str, 2)
-    if v and v == v then return v end   -- v==v guards NaN
+    if v and v == v and v > 0 then return v end   -- v==v guards NaN; >0 since 0 = parse error
+    -- v0.7.37: fallback — REAPER's measures.beats parser returns 0 on inputs it
+    -- doesn't like (e.g. a bare number, or our 3-part display string), which used
+    -- to silently reject the edit and pin the length at the 4.0s default. Accept a
+    -- bare number as a quarter-note (beat) count and convert via the project tempo.
+    local n = tonumber((str:gsub('%s', '')))
+    if n and n > 0 then
+      local secs = reaper.TimeMap2_QNToTime(0, n)   -- n QN from project start = n-beats length
+      if secs and secs == secs and secs > 0 then return secs end
+    end
     return nil
   end
   local mm, ss, mss = str:match('^%s*(%-?%d+):(%d+)%.?(%d*)%s*$')
@@ -1286,14 +1789,23 @@ local function process_num_drag()
     end
     local final
     if nd.place then
-      -- PER-DIGIT: discrete place-value steps. Ctrl = fine (10× smaller place).
-      local mods = ImGui.GetKeyMods(ctx)
-      local fine = (mods & ImGui.Mod_Ctrl) ~= 0
-      local place = nd.place * (fine and 0.1 or 1)
+      -- PER-DIGIT (v0.7.39): drag changes ONLY the hovered place — minutes, seconds,
+      -- or ms — and CLAMPS within that place (no carry into the neighbour). Decompose
+      -- the anchor, bump the one component, recompose. (Ctrl-fine dropped — Poofox: it
+      -- "just makes it slower"; restrict-to-place is the precision now.)
       local steps = math.floor(-dy / DRAG_PX_PER_DIGIT + 0.5)
-      local raw = nd.start_val + steps * place
-      if raw < 0 then raw = 0 end
-      final = raw
+      local base = nd.start_val < 0 and 0 or nd.start_val
+      local m  = math.floor(base / 60)
+      local s  = math.floor(base - m * 60)
+      local ms = math.floor((base - m * 60 - s) * 1000 + 0.5)
+      if nd.place == 60 then            -- minutes (unbounded up, floor 0)
+        m = m + steps; if m < 0 then m = 0 end
+      elseif nd.place == 1 then         -- seconds (0–59, no roll into minutes)
+        s = s + steps; if s < 0 then s = 0 elseif s > 59 then s = 59 end
+      else                              -- ms segment (place 0.01 → 10ms/step, 0–999)
+        ms = ms + steps * 10; if ms < 0 then ms = 0 elseif ms > 999 then ms = 999 end
+      end
+      final = m * 60 + s + ms / 1000
     else
       -- WHOLE-CELL: continuous, grid-snapped (beats / fallback).
       local sens = grid_step_sec() / DRAG_PX_PER_SNAP
@@ -1369,24 +1881,40 @@ local LANE_SNAP_PX = 12 -- magnetic snap radius to region ends (pixels)
 -- sections (same start, different end) auto-expand into rows. Lane assignment is
 -- OURS (display only) — REAPER's own ruler-lane data isn't exposed to scripts.
 local function pack_lanes()
-  -- pack a sorted copy: pos ascending, ties broken by LONGER first so the big
-  -- section claims lane 0 (the "arrangement"); smaller nested ones get bumped to
-  -- higher rows and are treated as overlay/marker regions (v0.7.9).
+  -- v0.7.32: honor S.lane_pref (a lane the user explicitly dragged a region to)
+  -- FIRST, so the DRAGGED region keeps its chosen row instead of the auto-packer
+  -- bumping the in-the-way one. Pref'd regions are placed first and claim their
+  -- row; everything else greedy-packs into the remaining gaps (longer-first so the
+  -- big section claims lane 0 = the "arrangement").
   local order = {}
   for _, r in ipairs(S.regions) do order[#order + 1] = r end
   table.sort(order, function(a, b)
+    local pa, pb = S.lane_pref[a.id], S.lane_pref[b.id]
+    if (pa ~= nil) ~= (pb ~= nil) then return pa ~= nil end   -- pref'd regions first
     if math.abs(a.pos - b.pos) > 1e-9 then return a.pos < b.pos end
     return a.len > b.len
   end)
-  local lane_of, lane_end, num = {}, {}, 0
-  for _, r in ipairs(order) do
-    local placed
-    for L = 0, num - 1 do
-      if r.pos >= lane_end[L] - 1e-9 then placed = L; break end
+  -- lane_spans[L] = list of {pos,rend} already placed in row L
+  local lane_of, lane_spans, num = {}, {}, 0
+  local function fits(L, r)
+    for _, sp in ipairs(lane_spans[L] or {}) do
+      if not (r.pos >= sp.rend - 1e-9 or r.rend <= sp.pos + 1e-9) then return false end
     end
-    if placed == nil then placed = num; num = num + 1 end
-    lane_of[r.id] = placed
-    lane_end[placed] = r.rend
+    return true
+  end
+  for _, r in ipairs(order) do
+    local L
+    local pref = S.lane_pref[r.id]
+    if pref ~= nil and fits(pref, r) then
+      L = pref
+    else
+      L = 0
+      while not fits(L, r) do L = L + 1 end
+    end
+    lane_of[r.id] = L
+    lane_spans[L] = lane_spans[L] or {}
+    table.insert(lane_spans[L], {pos = r.pos, rend = r.rend})
+    if L + 1 > num then num = L + 1 end
   end
   return lane_of, math.max(1, num)
 end
@@ -1464,6 +1992,13 @@ local function draw_region_lane()
     -- overlay regions (bumped to a higher row) get a brighter border so they
     -- read as marker-like annotations, not arrangement sections.
     ImGui.DrawList_AddRect(dl, rx1, yt, rx2, yb, L > 0 and OVERLAY_BORDER_COL or LANE_RECT_BORDER)
+    -- v0.7.31: selected region gets a bright thick border (matches the list row hl).
+    -- v0.7.37: + a translucent warm fill over the block so the selection reads on the
+    -- lane as obviously as the row tint does (a thin border was easy to miss).
+    if S.sel_set[r.id] then   -- v0.7.38: whole multi-selection highlights, not just the anchor
+      ImGui.DrawList_AddRectFilled(dl, rx1, yt, rx2, yb, SEL_FILL_COL)
+      ImGui.DrawList_AddRect(dl, rx1 - 1, yt - 1, rx2 + 1, yb + 1, SEL_BORDER_COL, 0, 0, 2.0)
+    end
     if rx2 - rx1 > 30 then
       ImGui.DrawList_PushClipRect(dl, rx1 + 2, yt, rx2 - 2, yb, true)
       -- v0.7.18: translucent plate behind the name so it stays readable over ANY
@@ -1473,6 +2008,24 @@ local function draw_region_lane()
       ImGui.DrawList_AddRectFilled(dl, tx - 2, ty - 1, tx + tw + 2, ty + th + 1, LANE_LABEL_BG_COL, 2.0)
       ImGui.DrawList_AddText(dl, tx, ty, NAME_TEXT_COL, r.name)
       ImGui.DrawList_PopClipRect(dl)
+    end
+  end
+
+  -- v0.7.33: gaps between consecutive regions (by position) — faintly highlighted
+  -- on the main row so they read as clickable; right-click one to remove it.
+  -- S.regions is kept sorted by position (load_regions), so neighbours are gaps.
+  local gaps = {}
+  for k = 1, #S.regions - 1 do
+    local a, b = S.regions[k], S.regions[k + 1]
+    if b.pos > a.rend + 1e-6 then
+      gaps[#gaps + 1] = {start = a.rend, fin = b.pos, after_id = a.id, after_i = k, len = b.pos - a.rend}
+    end
+  end
+  for _, g in ipairs(gaps) do
+    local gx1, gx2 = t_to_x(g.start), t_to_x(g.fin)
+    if gx2 - gx1 >= 2 then
+      ImGui.DrawList_AddRectFilled(dl, gx1, lane_top(0), gx2, lane_bot(0), GAP_FILL_COL)
+      ImGui.DrawList_AddRect(dl, gx1, lane_top(0), gx2, lane_bot(0), GAP_BORDER_COL, 0, 0, 1.0)
     end
   end
 
@@ -1530,15 +2083,60 @@ local function draw_region_lane()
     end
   end
 
-  -- Begin a potential drag on mouse-press over a region
-  if hovered and ImGui.IsMouseClicked(ctx, 0) and not S.lane_drag and not S.rename then
+  -- Begin a potential drag on mouse-press
+  if hovered and ImGui.IsMouseClicked(ctx, 0) and not S.lane_drag and not S.alt_drag and not S.rename then
+    local mods  = ImGui.GetKeyMods(ctx)
+    local shift = (mods & ImGui.Mod_Shift) ~= 0
+    local alt   = (mods & ImGui.Mod_Alt) ~= 0
     local hr, _, hrx2 = region_at_xy(mx, my)
-    if hr then
+    if shift or alt then
+      -- v0.7.35/37: SHIFT-drag = split-create, snapped to the project GRID (v0.7.37
+      -- — raw drags spanned the whole-project lane into huge regions that never
+      -- split). ALT-click = erase the region marker (content stays). On release.
+      local t0 = span_start + ((mx - x1g) / (x2g - x1g)) * span
+      if shift and S.split_snap then t0 = snap_to_grid_only(t0) end   -- v0.7.37/38: split snaps to grid when the magnet is on; erase stays raw
+      S.alt_drag = {start_x=mx, start_t=t0, over_id=hr and hr.id or nil,
+                    moved=false, do_split=shift, do_erase=alt}
+    elseif hr then
       local mode = (math.abs(mx - hrx2) <= LANE_EDGE_PX) and 'resize' or 'move'
       -- Ctrl held at grab = DUPLICATE (move-mode only); captured at grab like REAPER
-      local dup = (mode == 'move') and ((ImGui.GetKeyMods(ctx) & ImGui.Mod_Ctrl) ~= 0)
-      S.lane_drag = {id=hr.id, mode=mode, start_x=mx, dup=dup,
+      local dup = (mode == 'move') and ((mods & ImGui.Mod_Ctrl) ~= 0)
+      S.lane_drag = {id=hr.id, mode=mode, start_x=mx, start_y=my, dup=dup,
                      orig_pos=hr.pos, orig_len=hr.len, lane=lane_of[hr.id], moved=false}
+    else
+      -- v0.7.31: clicked EMPTY lane space → move the edit cursor here (clicking a
+      -- region selects it instead — handled on release in the drag block below).
+      local rel = (mx - x1g) / (x2g - x1g)
+      if rel < 0 then rel = 0 end; if rel > 1 then rel = 1 end
+      reaper.SetEditCurPos(span_start + rel * span, true, false)
+      S.sel_id = nil; S.sel_set = {}   -- v0.7.38: empty-space click clears the whole selection
+    end
+  end
+
+  -- v0.7.35: SHIFT-drag = split-create (no snap) · ALT-click = erase (see above).
+  if S.alt_drag then
+    local ad = S.alt_drag
+    local cur_t = span_start + ((mx - x1g) / (x2g - x1g)) * span
+    if ad.do_split and S.split_snap then cur_t = snap_to_grid_only(cur_t) end   -- v0.7.37/38: split snaps to grid when the magnet is on; erase stays raw
+    if math.abs(mx - ad.start_x) > LANE_DRAG_PX then ad.moved = true end
+    if ad.do_split and ad.moved then
+      local gx1, gx2 = t_to_x(math.min(ad.start_t, cur_t)), t_to_x(math.max(ad.start_t, cur_t))
+      ImGui.DrawList_AddRectFilled(dl, gx1, lane_top(0), gx2, lane_bot(0), INSERT_GHOST_COL)
+      ImGui.DrawList_AddRect(dl, gx1, lane_top(0), gx2, lane_bot(0), INSERT_CARET_COL, 0, 0, 2.0)
+      tip(('SHIFT: new region %s → %s (splits host into -a / -b)'):format(
+        fmt_time_full(math.min(ad.start_t, cur_t)), fmt_time_full(math.max(ad.start_t, cur_t))))
+    elseif ad.do_erase and ad.over_id and not ad.moved then
+      tip('ALT-click: erase this region (marker only — content stays)')
+    end
+    if ImGui.IsMouseReleased(ctx, 0) then
+      if ad.do_split and ad.moved then
+        alt_create_split(ad.start_t, cur_t)
+      elseif ad.do_erase and not ad.moved and ad.over_id then
+        local er
+        for _, rr in ipairs(S.regions) do if rr.id == ad.over_id then er = rr; break end end
+        if er then delete_region(er) end
+      end
+      S.alt_drag = nil
     end
   end
 
@@ -1551,33 +2149,23 @@ local function draw_region_lane()
       S.lane_drag = nil
     else
       local dx = mx - ld.start_x
-      if math.abs(dx) > LANE_DRAG_PX then ld.moved = true end
+      local dy = my - (ld.start_y or my)
+      if math.abs(dx) > LANE_DRAG_PX or math.abs(dy) > LANE_DRAG_PX then ld.moved = true end
       local delta_t = (dx / (x2g - x1g)) * span
-      local yt, yb = lane_top(ld.lane), lane_bot(ld.lane)
+      -- v0.7.32: drag DIRECTION decides the action (the overlap/insert toggle is
+      -- gone). Dragging into a DIFFERENT lane row = LANE-MOVE: the dragged region
+      -- goes to that lane at the drop time (free overlay, content follows). Staying
+      -- in the same lane row = RIPPLE-REORDER into the nearest slot (others reflow).
+      local target_lane = math.floor((my - y1g) / LANE_ROW_H)
+      if target_lane < 0 then target_lane = 0 end
+      ld.lane_move = (ld.mode == 'move') and (target_lane ~= ld.lane)
+      ld.target_lane = target_lane
+      local yt, yb = lane_top(ld.lane_move and target_lane or ld.lane),
+                     lane_bot(ld.lane_move and target_lane or ld.lane)
 
       if ld.moved then
-        if ld.mode == 'move' and S.lane_mode == 'insert' then
-          -- INSERT: don't free-slide. Show a bright caret at the slot the drop
-          -- would land in; on release we commit_reorder (content reflows).
-          local drop_t = span_start + ((mx - x1g) / (x2g - x1g)) * span
-          local _, idx, others = order_for_insert(ld.id, drop_t)
-          local caret_x
-          if idx <= #others then caret_x = t_to_x(others[idx].pos)
-          elseif #others > 0 then caret_x = t_to_x(others[#others].rend)
-          else caret_x = x1g end
-          ld.preview = drop_t
-          -- caret + translucent landing ghost (region width) on row 0
-          ImGui.DrawList_AddLine(dl, caret_x, y1g, caret_x, y2g, INSERT_CARET_COL, 3.0)
-          local w_px = (ld.orig_len / span) * (x2g - x1g)
-          ImGui.DrawList_AddRectFilled(dl, caret_x, lane_top(0), caret_x + w_px, lane_bot(0), INSERT_GHOST_COL)
-          local before = (idx <= #others) and others[idx].name or '(end)'
-          if ld.dup then
-            tip(('DUPLICATE → INSERT before %s  ·  copy added, later content reflows'):format(before))
-          else
-            tip(('INSERT before %s  ·  others reflow, audio follows'):format(before))
-          end
-        elseif ld.mode == 'move' then
-          -- OVERLAY: free slide with strong edge-snapping (can stack / nest).
+        if ld.mode == 'move' and ld.lane_move then
+          -- LANE-MOVE: free placement onto the target lane row, strong edge-snap.
           local raw = ld.orig_pos + delta_t
           local s_start = snap_edge(raw, ld.id)
           local s_end   = snap_edge(raw + ld.orig_len, ld.id)
@@ -1594,9 +2182,28 @@ local function draw_region_lane()
           local gx1, gx2 = t_to_x(target), t_to_x(target + ld.orig_len)
           ImGui.DrawList_AddRect(dl, gx1, yt, gx2, yb, GHOST_COL, 0, 0, 2.0)
           if ld.dup then
-            tip(('DUPLICATE → %s  ·  copy placed (content follows)'):format(fmt_time_full(ld.preview)))
+            tip(('DUPLICATE → lane %d @ %s (content follows)'):format(target_lane + 1, fmt_time_full(target)))
           else
-            tip(('OVERLAY → %s  ·  marker only'):format(fmt_time_full(ld.preview)))
+            tip(('LANE MOVE → lane %d @ %s (content follows, may overlap)'):format(target_lane + 1, fmt_time_full(target)))
+          end
+        elseif ld.mode == 'move' then
+          -- RIPPLE-REORDER: caret at the slot the drop lands in; commit_reorder
+          -- on release shifts the media items so content follows + others reflow.
+          local drop_t = span_start + ((mx - x1g) / (x2g - x1g)) * span
+          local _, idx, others = order_for_insert(ld.id, drop_t)
+          local caret_x
+          if idx <= #others then caret_x = t_to_x(others[idx].pos)
+          elseif #others > 0 then caret_x = t_to_x(others[#others].rend)
+          else caret_x = x1g end
+          ld.preview = drop_t
+          ImGui.DrawList_AddLine(dl, caret_x, y1g, caret_x, y2g, INSERT_CARET_COL, 3.0)
+          local w_px = (ld.orig_len / span) * (x2g - x1g)
+          ImGui.DrawList_AddRectFilled(dl, caret_x, lane_top(0), caret_x + w_px, lane_bot(0), INSERT_GHOST_COL)
+          local before = (idx <= #others) and others[idx].name or '(end)'
+          if ld.dup then
+            tip(('DUPLICATE → REORDER before %s  ·  copy added, later content reflows'):format(before))
+          else
+            tip(('REORDER before %s  ·  others reflow, audio follows · drag to a lane row to stack'):format(before))
           end
         else
           local raw_end = ld.orig_pos + ld.orig_len + delta_t
@@ -1613,31 +2220,33 @@ local function draw_region_lane()
       if ImGui.IsMouseReleased(ctx, 0) then
         if ld.moved and ld.preview then
           if ld.mode == 'move' then
-            if ld.dup then
-              -- Ctrl+drag: clone the region (marker + media) to the drop. Respects
-              -- the Insert/Lanes toggle exactly like a move (insert = ripple-open +
-              -- place; lanes = free overlay placement).
-              duplicate_region(r, ld.preview, S.lane_mode)
-            elseif S.lane_mode == 'insert' then
-              -- INSERT: reorder into the dropped slot; commit_reorder shifts the
-              -- media items deterministically so content follows + others reflow.
-              local order = order_for_insert(ld.id, ld.preview)
-              commit_reorder(order)
+            if ld.lane_move then
+              -- LANE-MOVE: place the DRAGGED region on the target lane (free,
+              -- content follows). lane_pref makes the packer keep IT in that lane
+              -- (vs bumping the in-the-way region, which the old auto-pack did).
+              if ld.dup then duplicate_region(r, ld.preview, 'overlay')
+              else apply_move_free(r, ld.preview, true) end
+              if ld.target_lane and ld.target_lane > 0 then
+                S.lane_pref[ld.id] = ld.target_lane
+              else
+                S.lane_pref[ld.id] = nil
+              end
             else
-              -- OVERLAY: free placement that MOVES CONTENT and is allowed to
-              -- overlap/nest (v0.7.14 — per Poofox: when regions overlap the audio
-              -- should overlap too). overlap_mode picks how the overlap reads:
-              -- crossfade = REAPER auto-crossfades the overlapping items; overlap =
-              -- hard stack. set_autoxfade self-guards (no-op if the action id is
-              -- unavailable on this build).
-              set_autoxfade(S.overlap_mode == 'crossfade')
-              apply_move_free(r, ld.preview, true)
+              -- RIPPLE-REORDER (same-lane horizontal drag).
+              S.lane_pref[ld.id] = nil   -- reorder lays it back into lane 0
+              if ld.dup then
+                duplicate_region(r, ld.preview, 'insert')
+              else
+                local order = order_for_insert(ld.id, ld.preview)
+                commit_reorder(order)
+              end
             end
           else apply_length(r, ld.preview) end
         elseif not ld.moved then
-          local rel = (mx - x1g) / (x2g - x1g)
-          if rel < 0 then rel = 0 end; if rel > 1 then rel = 1 end
-          reaper.SetEditCurPos(span_start + rel * span, true, false)
+          -- v0.7.31: plain click on a region = SELECT it (project time-sel +
+          -- list highlight), NOT move the edit cursor. (Empty-space clicks move
+          -- the cursor — handled at mouse-press above.)
+          select_region(r)
         end
         S.lane_drag = nil
       end
@@ -1645,22 +2254,59 @@ local function draw_region_lane()
   end
 
   -- Hover (no active drag): tooltip + resize-cursor hint
-  if hovered and not S.lane_drag then
+  if hovered and not S.lane_drag and not S.alt_drag then
     local hover_r, _, hrx2 = region_at_xy(mx, my)
     if hover_r then
       if math.abs(mx - hrx2) <= LANE_EDGE_PX and ImGui.SetMouseCursor and ImGui.MouseCursor_ResizeEW then
         ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_ResizeEW)
       end
-      local kind = S.lane_mode == 'insert'
-        and '  [drag = INSERT: reorder, content follows]'
-        or  '  [drag = OVERLAY: free place, marker only]'
-      tip(('%s%s\n%s  →  %s   (len %s)\n[drag=move · right-edge=resize · dbl-click=rename]'):format(
-        hover_r.name, kind, fmt_time_full(hover_r.pos), fmt_time_full(hover_r.rend), fmt_time_full(hover_r.len, 'len')))
+      tip(('%s\n%s  →  %s   (len %s)\n[drag sideways=reorder · drag to a lane=stack · right-edge=resize\n dbl-click=rename · alt-click=erase · shift-drag=split · right-click=menu]'):format(
+        hover_r.name, fmt_time_full(hover_r.pos), fmt_time_full(hover_r.rend), fmt_time_full(hover_r.len, 'len')))
     else
       local rel = (mx - x1g) / (x2g - x1g)
       if rel < 0 then rel = 0 end; if rel > 1 then rel = 1 end
       tip(fmt_time_full(span_start + rel * span))
     end
+  end
+
+  -- v0.7.32/33: right-click a lane region → remove menu; right-click a GAP → remove-gap menu.
+  if hovered and ImGui.IsMouseClicked(ctx, 1) and not S.lane_drag and not S.alt_drag then
+    local cr = region_at_xy(mx, my)
+    if cr then
+      S.lane_ctx_id = cr.id; ImGui.OpenPopup(ctx, '##lane_ctx')
+    elseif my >= lane_top(0) and my <= lane_bot(0) then
+      for _, g in ipairs(gaps) do
+        if mx >= t_to_x(g.start) and mx <= t_to_x(g.fin) then
+          S.gap_ctx = {after_id = g.after_id, len = g.len}
+          ImGui.OpenPopup(ctx, '##gap_ctx'); break
+        end
+      end
+    end
+  end
+  if ImGui.BeginPopup(ctx, '##gap_ctx') then
+    if S.gap_ctx then
+      ImGui.Text(ctx, ('Gap: %s'):format(fmt_time_full(S.gap_ctx.len, 'len'))); ImGui.Separator(ctx)
+      if ImGui.Selectable(ctx, ('Remove gap (%s) — pull later content left'):format(fmt_time_full(S.gap_ctx.len, 'len'))) then
+        for idx, rr in ipairs(S.regions) do
+          if rr.id == S.gap_ctx.after_id then remove_gap_after(idx); break end
+        end
+      end
+    else
+      ImGui.Text(ctx, '(gap gone)')
+    end
+    ImGui.EndPopup(ctx)
+  end
+  if ImGui.BeginPopup(ctx, '##lane_ctx') then
+    local cr
+    for _, rr in ipairs(S.regions) do if rr.id == S.lane_ctx_id then cr = rr; break end end
+    if cr then
+      local n = (S.sel_set[cr.id] and sel_count() > 1) and sel_count() or 1
+      ImGui.Text(ctx, n > 1 and (n .. ' regions selected') or cr.name); ImGui.Separator(ctx)
+      removal_menu(cr)   -- v0.7.38: 3 options, applies to the whole selection if cr is in it
+    else
+      ImGui.Text(ctx, '(region gone)')
+    end
+    ImGui.EndPopup(ctx)
   end
 
   -- In-place rename overlay, positioned at the region's packed lane row
@@ -1709,6 +2355,11 @@ local function draw_table()
     ImGui.TableNextRow(ctx)
     ImGui.PushID(ctx, r.id)
 
+    -- v0.7.31/38: tint every selected row (matches the lane highlight).
+    if S.sel_set[r.id] then
+      ImGui.TableSetBgColor(ctx, ImGui.TableBgTarget_RowBg0, SEL_ROW_COL)
+    end
+
     -- Col 0: row number + WHOLE-ROW drag handle (v0.7.7, punch #7).
     -- A Selectable spanning all columns is the drag source/target. With
     -- SetNextItemAllowOverlap, the cells drawn afterwards (color/name/time/
@@ -1721,7 +2372,9 @@ local function draw_table()
     -- IsItemHovered never fired there → double-click-to-edit was dead everywhere.
     -- (The lane is the primary reorder surface now; col-0 grab stays for the table.)
     ImGui.TableSetColumnIndex(ctx, 0)
-    ImGui.Selectable(ctx, tostring(i) .. '##rowdrag', false, 0, 0, 0)
+    if ImGui.Selectable(ctx, tostring(i) .. '##rowdrag', S.sel_set[r.id] and true or false, 0, 0, 0) then
+      select_region(r, ImGui.GetKeyMods(ctx))   -- v0.7.31/38: click row number → select (Shift=range, Ctrl=toggle)
+    end
     if ImGui.BeginDragDropSource(ctx, ImGui.DragDropFlags_None) then
       ImGui.SetDragDropPayload(ctx, 'REGION_ROW', tostring(i))
       ImGui.Text(ctx, ('Move: %s'):format(r.name))
@@ -1761,10 +2414,19 @@ local function draw_table()
       -- so you can grab a region BY ITS NAME to reorder (the col-0 number is a tiny
       -- target); the drop routes through commit_reorder so content moves too.
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, NAME_TEXT_COL)  -- 93% white (Poofox)
-      ImGui.Selectable(ctx, r.name .. '##nm_' .. r.id, false, ImGui.SelectableFlags_AllowDoubleClick)
+      if ImGui.Selectable(ctx, r.name .. '##nm_' .. r.id, S.sel_set[r.id] and true or false, ImGui.SelectableFlags_AllowDoubleClick) then
+        select_region(r, ImGui.GetKeyMods(ctx))   -- v0.7.31/38: click name → select (Shift=range, Ctrl=toggle; dbl-click still renames)
+      end
       ImGui.PopStyleColor(ctx)
       if ImGui.IsItemHovered(ctx) and ImGui.IsMouseDoubleClicked(ctx, 0) then
         S.rename = {id=r.id, buf=r.name, focused=false, where='table'}
+      end
+      -- v0.7.32: right-click the name → remove context menu (mirrors the lane).
+      if ImGui.BeginPopupContextItem(ctx, 'rowctx_' .. r.id) then
+        local n = (S.sel_set[r.id] and sel_count() > 1) and sel_count() or 1
+        ImGui.Text(ctx, n > 1 and (n .. ' regions selected') or r.name); ImGui.Separator(ctx)
+        removal_menu(r)   -- v0.7.38: 3 options, applies to the whole selection if r is in it
+        ImGui.EndPopup(ctx)
       end
       if ImGui.BeginDragDropSource(ctx, ImGui.DragDropFlags_None) then
         ImGui.SetDragDropPayload(ctx, 'REGION_ROW', tostring(i))
@@ -1832,24 +2494,33 @@ local function draw_table()
         tip('Type gap length (honours Time/Beats) · Enter = insert · Esc = cancel')
       end
     else
-      -- single-click = insert last-used gap; double-click = type exact.
-      -- Label shows the ACTUAL gap after this region once one exists (e.g.
-      -- "2s"), else "+Gap". Plenty of column room (64px).
       local g = gap_after(r)
-      -- v0.7.28: gap label + tooltips honour the Time/Beats toggle (was '%.3gs').
-      local glabel = (g and g > 0.001) and fmt_time_full(g, 'len') or '+Gap'
-      local clicked = ImGui.SmallButton(ctx, glabel .. '##gap_btn_' .. r.id)
-      if ImGui.IsItemHovered(ctx) and ImGui.IsMouseDoubleClicked(ctx, 0) then
-        S.gapedit = {id=r.id, buf=fmt_time_full(S.gap_len, 'len'), focused=false}
-      elseif clicked then
-        add_gap_after(i, S.gap_len)
-      end
-      if ImGui.IsItemHovered(ctx) then
-        if g and g > 0.001 then
-          tip(('Gap after this region: %s · click adds %s more · double-click to type exact')
-              :format(fmt_time_full(g, 'len'), fmt_time_full(S.gap_len, 'len')))
-        else
-          tip(('Insert %s gap (click) · double-click to type exact length')
+      if g and g > 0.001 then
+        -- v0.7.39: an existing gap is now a DRAGGABLE per-digit cell (same feel as
+        -- start/length). Drag = resize via ripple on release; double-click = type
+        -- exact; drag/type to 0 closes it. Honours Time/Beats via kind='len'.
+        drag_time_cell(
+          'reg_' .. r.id .. '_gap',
+          g, g,
+          nil,                                            -- ripple is heavy: no per-frame
+          function(parsed) set_gap_after(i, parsed) end,  -- type-to-edit commit
+          function(final)  set_gap_after(i, final)  end,  -- drag release → one ripple
+          'len'
+        )
+        if ImGui.IsItemHovered(ctx) then
+          tip(('Gap: %s · drag a digit to resize · double-click to type · 0 closes it')
+              :format(fmt_time_full(g, 'len')))
+        end
+      else
+        -- no gap yet → "+Gap" button: click inserts last-used length, dbl-click types.
+        local clicked = ImGui.SmallButton(ctx, '+Gap##gap_btn_' .. r.id)
+        if ImGui.IsItemHovered(ctx) and ImGui.IsMouseDoubleClicked(ctx, 0) then
+          S.gapedit = {id=r.id, buf=fmt_time_full(S.gap_len, 'len'), focused=false}
+        elseif clicked then
+          add_gap_after(i, S.gap_len)
+        end
+        if ImGui.IsItemHovered(ctx) then
+          tip(('Insert %s gap (click) · double-click to type · drag to resize once it exists')
               :format(fmt_time_full(S.gap_len, 'len')))
         end
       end
@@ -1886,14 +2557,22 @@ local function draw_table()
 end
 
 local HELP_TEXT =
-  'Lane drag depends on the mode toggle:\n' ..
-  '  INSERT — drop a region between others; they reflow out of the way and audio follows (a caret shows the slot)\n' ..
-  '  LANES — free placement; regions may overlap and their audio overlaps too (Overlap = hard stack · Xfade = auto-crossfade)\n' ..
+  'Lane gestures (no mode toggle — the gesture decides):\n' ..
+  '  Drag a region SIDEWAYS (same row) = ripple-reorder into the slot; others reflow, content follows (a caret shows the slot)\n' ..
+  '  Drag a region INTO ANOTHER LANE ROW = stack it there (overlap); the dragged region takes that lane, content follows\n' ..
+  '  Right-edge drag = resize · Ctrl+drag = duplicate\n' ..
+  '  SHIFT-drag on the lane = new region over that span (no snap); if it lands inside a region, that region splits into name-a / name-b\n' ..
+  '  ALT-click a region = erase it (marker only — nothing else in the timeline changes)\n' ..
+  '  Right-click a region = remove menu: Remove region · + content (leave gap) · + content + gap (ripple-close)\n' ..
+  '  Click a region = select · Ctrl+click = add/toggle · Shift+click = range (list). Right-click any selected → removes all of them.\n' ..
+  '  CROSSFADE toggle (toolbar center) — REAPER auto-crossfade on/off for overlapping items\n' ..
+  '  SHOW-IN-LANES toggle — REAPER "show overlapping media items in lanes" on/off · MAGNET — SHIFT-drag split snaps to grid (on) / free (off)\n' ..
   'Reorder in the list: drag a region by its NAME (or the number) onto another row — content moves with it\n' ..
   'Time cells (Time mode): drag a SPECIFIC number (minutes / seconds / ms) up/down to change just that place · hold Ctrl for fine steps · double-click = type the value. (Beats mode = whole-cell grid-snap drag.)\n' ..
   'Rename: double-click a region name (list or lane)\n' ..
   'Color: right-click the color cell for grey presets + a custom RGB/HSV picker\n' ..
   'Gap: set "Gap Length" (right), then +Gap on a row to insert that much silence (ripples later regions). Once a gap exists the button shows its length. Double-click to type an exact gap.\n' ..
+  'Remove a gap: gaps between regions are faintly highlighted on the lane — right-click one → "Remove gap" pulls later content left by that amount.\n' ..
   'Tooltips: the ? by the X toggles these on/off · Close: the X, or Esc when nothing is being edited\n' ..
   'Usage log (for feedback): a JSONL file at <REAPER resource path>/Data/ReaRanger/ (Options > Show REAPER resource path). Email it to share your sessions.'
 
@@ -1921,7 +2600,7 @@ local function draw_title_bar()
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + avail_w, y1 + bar_h, TITLE_BG_COL)
   ImGui.DrawList_AddRect(dl,       x1, y1, x1 + avail_w, y1 + bar_h, LANE_BORDER_COL)
   -- App name (draw-list text = not an item, so this area stays drag-anywhere)
-  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.28')
+  ImGui.DrawList_AddText(dl, x1 + pad, y1 + 4, TITLE_TEXT_COL, 'ReaRanger  v0.7.38')
 
   -- ? (help + tooltip-toggle) then X close, top-right inside the band.
   -- The moved-here ? does double duty: hover = full help, click = toggle all
@@ -1948,20 +2627,196 @@ local function draw_title_bar()
   ImGui.PopStyleColor(ctx)
   ImGui.PopTextWrapPos(ctx)
 
+  -- Right-click the title band → dock context menu (v0.7.29). Hit-tested manually
+  -- (the band is draw-list text, not an item, to preserve drag-anywhere) over the
+  -- band minus the ?/X gutter. Drag a floating window onto a REAPER docker to dock
+  -- natively; this menu is the explicit toggle Poofox asked for.
+  do
+    local mx, my = ImGui.GetMousePos(ctx)
+    local in_band = mx >= x1 and mx <= (x1 + avail_w - X_COL_W)
+                and my >= y1 and my <= (y1 + bar_h)
+    if in_band and ImGui.IsMouseClicked(ctx, 1) then
+      ImGui.OpenPopup(ctx, '##rr_titlemenu')
+    end
+    if ImGui.BeginPopup(ctx, '##rr_titlemenu') then
+      if S.is_docked then
+        if ImGui.MenuItem(ctx, 'Undock') then
+          S.dock_target = 0; S.dock_apply = true
+        end
+        ImGui.TextDisabled(ctx, ('docker id %d'):format(S.last_dock_id or 0))
+      else
+        if ImGui.MenuItem(ctx, 'Dock') then
+          S.dock_target = S.last_dock_id or -1; S.dock_apply = true
+        end
+      end
+      ImGui.Separator(ctx)
+      if ImGui.MenuItem(ctx, 'Close') then S.want_close = true end
+      ImGui.EndPopup(ctx)
+    end
+  end
+
   -- advance the layout cursor below the band
   ImGui.SetCursorScreenPos(ctx, x1, y1 + bar_h + 2)
   ImGui.Dummy(ctx, avail_w, 0)
 end
 
+-- ── Icon toolbar (v0.7.30) ──────────────────────────────────────────────────
+-- Light, low-contrast styling with a few grey tones: OFF = muted grey glyph on a
+-- light backing; ON = high-contrast dark glyph on a brighter backing (per Poofox
+-- "more contrast when on than off"). Every glyph is hand-drawn via DrawList
+-- (sigs reasig-verified, version-stable vs the 0.9 pin) inside its button box.
+local ICON_BG_OFF    = 0xBCBCBCFF   -- light grey backing (off)
+local ICON_BG_ON     = 0xECECECFF   -- brighter backing (on)
+local ICON_GLYPH_OFF = 0x868686FF   -- muted grey glyph (low contrast)
+local ICON_GLYPH_ON  = 0x1C1C1CFF   -- near-black glyph (high contrast)
+local ICON_BD_OFF    = 0x9A9A9AFF
+local ICON_BD_ON     = 0x404040FF
+local ICON_SHADE     = 0x00000026   -- translucent overlap shading
+
+
+-- Generic icon button: light backing + a glyph drawn by glyph_fn, hit-tested
+-- with an InvisibleButton. glyph_fn(dl, x1, y1, w, h, col, active) paints inside
+-- the [x1,y1 .. x1+w,y1+h] box. Returns true on click.
+-- glyph_col (optional): force the glyph colour regardless of active state. Used
+-- by ACTION buttons (e.g. +Region) that have only one state and shouldn't render
+-- faded like an OFF toggle (Poofox, v0.7.31).
+local function icon_button(id, w, h, active, tip_txt, glyph_fn, glyph_col)
+  local sx, sy  = ImGui.GetCursorScreenPos(ctx)
+  local clicked = ImGui.InvisibleButton(ctx, id, w, h)
+  local hovered = ImGui.IsItemHovered(ctx)
+  if hovered then tip(tip_txt) end
+  local dl = ImGui.GetWindowDrawList(ctx)
+  ImGui.DrawList_AddRectFilled(dl, sx, sy, sx + w, sy + h, active and ICON_BG_ON or ICON_BG_OFF, 3.0)
+  ImGui.DrawList_AddRect(dl, sx, sy, sx + w, sy + h, active and ICON_BD_ON or ICON_BD_OFF, 3.0, 0, active and 2.0 or 1.0)
+  glyph_fn(dl, sx, sy, w, h, glyph_col or (active and ICON_GLYPH_ON or ICON_GLYPH_OFF), active)
+  return clicked
+end
+
+-- "+" and a region symbol. v0.7.31: drawn as a closed region BLOCK (top + bottom
+-- edges + end caps) instead of a single bar with end caps — the old form read as
+-- an "H". The top edge is the region label line.
+local function glyph_region(dl, x, y, w, h, col)
+  local cy = y + h * 0.5
+  -- plus, left third
+  local px, pr = x + w * 0.26, h * 0.17
+  ImGui.DrawList_AddLine(dl, px - pr, cy, px + pr, cy, col, 1.9)
+  ImGui.DrawList_AddLine(dl, px, cy - pr, px, cy + pr, col, 1.9)
+  -- region block, right portion: top + bottom edges + end caps = a region
+  local rx1, rx2 = x + w * 0.50, x + w * 0.84
+  local cap = h * 0.20
+  ImGui.DrawList_AddLine(dl, rx1, cy - cap, rx2, cy - cap, col, 1.9)  -- top (label edge)
+  ImGui.DrawList_AddLine(dl, rx1, cy + cap, rx2, cy + cap, col, 1.9)  -- bottom
+  ImGui.DrawList_AddLine(dl, rx1, cy - cap, rx1, cy + cap, col, 1.9)  -- left cap
+  ImGui.DrawList_AddLine(dl, rx2, cy - cap, rx2, cy + cap, col, 1.9)  -- right cap
+end
+
+-- clock face (Time mode): circle + two hands
+local function glyph_clock(dl, x, y, w, h, col)
+  local cx, cy = x + w * 0.5, y + h * 0.5
+  local r = math.min(w, h) * 0.30
+  ImGui.DrawList_AddCircle(dl, cx, cy, r, col, 0, 1.6)
+  ImGui.DrawList_AddLine(dl, cx, cy, cx, cy - r * 0.72, col, 1.6)        -- minute hand (up)
+  ImGui.DrawList_AddLine(dl, cx, cy, cx + r * 0.55, cy + r * 0.18, col, 1.6) -- hour hand
+end
+
+-- Beats mode: two beamed eighth notes (v0.7.31 — the snare drum read as a "TV").
+local function glyph_notes(dl, x, y, w, h, col)
+  local r = math.min(w, h) * 0.12
+  local h1x, h2x = x + w * 0.34, x + w * 0.64   -- note-head centres
+  local hy = y + h * 0.66
+  ImGui.DrawList_AddCircleFilled(dl, h1x, hy, r, col, 0)
+  ImGui.DrawList_AddCircleFilled(dl, h2x, hy, r, col, 0)
+  -- stems rise from the right edge of each head
+  local sx1, sx2 = h1x + r * 0.85, h2x + r * 0.85
+  local stem_top = y + h * 0.30
+  ImGui.DrawList_AddLine(dl, sx1, hy - r * 0.4, sx1, stem_top, col, 1.6)
+  ImGui.DrawList_AddLine(dl, sx2, hy - r * 0.4, sx2, stem_top, col, 1.6)
+  -- beam joining the two stems
+  ImGui.DrawList_AddLine(dl, sx1, stem_top, sx2, stem_top, col, 2.6)
+end
+
+-- crossfade: two crossing fade curves (bezier X) with the overlap lens shaded
+local function glyph_crossfade(dl, x, y, w, h, col)
+  local x1, x2   = x + w * 0.20, x + w * 0.80
+  local top, bot = y + h * 0.26, y + h * 0.74
+  local midy     = (top + bot) / 2
+  -- shaded lens under the crossing = the overlapping region
+  ImGui.DrawList_AddTriangleFilled(dl, x1, top, x2, midy, x1, bot, ICON_SHADE)
+  ImGui.DrawList_AddTriangleFilled(dl, x2, top, x1, midy, x2, bot, ICON_SHADE)
+  -- fade-out curve (high-left → low-right) + fade-in curve (low-left → high-right)
+  ImGui.DrawList_AddBezierCubic(dl, x1, top, x + w * 0.45, top, x + w * 0.55, bot, x2, bot, col, 1.6, 0)
+  ImGui.DrawList_AddBezierCubic(dl, x1, bot, x + w * 0.45, bot, x + w * 0.55, top, x2, top, col, 1.6, 0)
+end
+
+-- Auto-crossfade = a standalone toggle bound to REAPER's own option (40912
+-- "Options: Auto-crossfade media items when editing"). User-driven: the icon
+-- reflects the REAPER state and clicking flips it. Self-guards if unavailable.
+local AUTOXFADE_CMD = 40912
+local function autoxfade_on() return reaper.GetToggleCommandState(AUTOXFADE_CMD) == 1 end
+local function toggle_autoxfade()
+  if reaper.GetToggleCommandState(AUTOXFADE_CMD) == -1 then
+    set_status('Crossfade: REAPER auto-crossfade option unavailable on this build')
+    return
+  end
+  reaper.Main_OnCommand(AUTOXFADE_CMD, 0)
+  set_status('Crossfade: ' .. (autoxfade_on() and 'ON' or 'OFF') .. ' (REAPER auto-crossfade)')
+end
+
+-- Show overlapping items in lanes: two stacked lanes with staggered item blocks
+-- (two items overlapping in time, separated into rows). v0.7.36.
+local function glyph_lanes(dl, x, y, w, h, col)
+  local x1, x2   = x + w * 0.16, x + w * 0.84
+  local top, bot = y + h * 0.22, y + h * 0.78
+  local midy     = (top + bot) / 2
+  ImGui.DrawList_AddLine(dl, x1, midy, x2, midy, col, 1.0)   -- lane divider
+  -- top-lane item (left) + bottom-lane item (right), overlapping in x
+  ImGui.DrawList_AddRectFilled(dl, x1, top, x + w * 0.58, midy - 1, ICON_SHADE)
+  ImGui.DrawList_AddRect(dl,       x1, top, x + w * 0.58, midy - 1, col)
+  ImGui.DrawList_AddRectFilled(dl, x + w * 0.42, midy + 1, x2, bot, ICON_SHADE)
+  ImGui.DrawList_AddRect(dl,       x + w * 0.42, midy + 1, x2, bot, col)
+end
+
+-- Magnet (split-snap toggle, v0.7.38): horseshoe — rounded top, two legs, pole tips.
+local function glyph_magnet(dl, x, y, w, h, col)
+  local lx, rx = x + w * 0.30, x + w * 0.70
+  local topy   = y + h * 0.22
+  local arcy   = y + h * 0.44
+  local legb   = y + h * 0.68
+  ImGui.DrawList_AddBezierCubic(dl, lx, arcy, lx, topy, rx, topy, rx, arcy, col, 2.0, 0)   -- rounded top
+  ImGui.DrawList_AddLine(dl, lx, arcy, lx, legb, col, 2.0)                                  -- left leg
+  ImGui.DrawList_AddLine(dl, rx, arcy, rx, legb, col, 2.0)                                  -- right leg
+  ImGui.DrawList_AddRectFilled(dl, lx - w * 0.08, legb, lx + w * 0.08, legb + h * 0.12, col) -- left pole
+  ImGui.DrawList_AddRectFilled(dl, rx - w * 0.08, legb, rx + w * 0.08, legb + h * 0.12, col) -- right pole
+end
+
+-- "Show overlapping media items in lanes (when room)" — REAPER option 40507.
+-- Standalone toggle bound to REAPER's own state (like the crossfade one): the
+-- icon reflects the option and clicking flips it. Self-guards if unavailable.
+local SHOWLANES_CMD = 40507
+local function showlanes_on() return reaper.GetToggleCommandState(SHOWLANES_CMD) == 1 end
+local function toggle_showlanes()
+  if reaper.GetToggleCommandState(SHOWLANES_CMD) == -1 then
+    set_status('Show in lanes: REAPER option unavailable on this build')
+    return
+  end
+  reaper.Main_OnCommand(SHOWLANES_CMD, 0)
+  set_status('Show overlapping items in lanes: ' .. (showlanes_on() and 'ON' or 'OFF'))
+end
+
 local function draw_toolbar()
-  -- Layout: LEFT = +Region/len · CENTER = mode toggles (regions/items) · RIGHT =
+  -- Layout: LEFT = +Region/len · CENTER = 3-way mode squares · RIGHT =
   -- Time/Beats + Gap len.
   local start_x = ImGui.GetCursorPosX(ctx)
   local total_w = start_x + select(1, ImGui.GetContentRegionAvail(ctx))   -- content right edge X
 
-  -- LEFT: + Region with its own length field
-  if ImGui.Button(ctx, '+ Region') then add_region_at_cursor() end
-  if ImGui.IsItemHovered(ctx) then tip('Add a region at the edit cursor, this long (honours Time/Beats)') end
+  -- LEFT: + Region icon with its own length field
+  local sq = math.floor(ImGui.GetFrameHeight(ctx) + 0.5)
+  -- +Region is an ACTION (one state) → force full-contrast glyph so it isn't faded.
+  if icon_button('##addregion', math.floor(sq * 1.6), sq, false,
+      'Add a region at the edit cursor, this long (honours Time/Beats + overlap mode)',
+      glyph_region, ICON_GLYPH_ON) then
+    add_region_at_cursor()
+  end
   ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, 'Length')
   ImGui.SameLine(ctx); ImGui.SetNextItemWidth(ctx, 64)
   -- v0.7.28: new-region length entry honours the Time/Beats toggle (was a
@@ -1979,45 +2834,46 @@ local function draw_toolbar()
   end
   if ImGui.IsItemHovered(ctx) then tip('New region length — honours the Time/Beats toggle') end
 
-  -- CENTER: the two mode toggles, labelled by what they act on — "regions" (the
-  -- Insert/Overlay arrange behaviour) and "items" (how overlapping audio reads).
-  local CENTER_W = 250
+  -- CENTER: standalone toggles bound to REAPER options — CROSSFADE (auto-crossfade)
+  -- + SHOW-IN-LANES (40507, show overlapping items in lanes). v0.7.32 removed the
+  -- old overlap/not-overlap toggle (overlap is now decided by gesture: drag a region
+  -- into a lane row to stack; horizontal drag = ripple-reorder).
+  local CENTER_W = sq * 3 + 8
   ImGui.SameLine(ctx)
   ImGui.SetCursorPosX(ctx, math.max(ImGui.GetCursorPosX(ctx), (total_w - CENTER_W) / 2))
-  ImGui.TextDisabled(ctx, 'Regions:'); ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, S.lane_mode == 'insert' and 'Insert' or 'Lanes') then
-    S.lane_mode = (S.lane_mode == 'insert') and 'overlay' or 'insert'
-    set_status('Regions: ' .. (S.lane_mode == 'insert'
-      and 'INSERT (reorder, push others out of the way)' or 'LANES (free place, regions can overlap)'))
+  local row_y = ImGui.GetCursorPosY(ctx)
+  if icon_button('##crossfade', sq, sq, autoxfade_on(),
+      'CROSSFADE — toggle REAPER auto-crossfade for overlapping items (on/off).', glyph_crossfade) then
+    toggle_autoxfade()
   end
-  if ImGui.IsItemHovered(ctx) then
-    tip(S.lane_mode == 'insert'
-      and 'Regions: INSERT — lane move reorders, others reflow, audio follows (click → Lanes)'
-      or  'Regions: LANES — lane move is free, regions can overlap (click → Insert)')
+  ImGui.SameLine(ctx, 0, 4); ImGui.SetCursorPosY(ctx, row_y)
+  if icon_button('##showlanes', sq, sq, showlanes_on(),
+      'SHOW IN LANES — REAPER option "Show overlapping media items in lanes (when room)" (on/off).', glyph_lanes) then
+    toggle_showlanes()
   end
-  ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, 'Items:'); ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, S.overlap_mode == 'crossfade' and 'Xfade' or 'Overlap') then
-    S.overlap_mode = (S.overlap_mode == 'crossfade') and 'overlap' or 'crossfade'
-    set_status('Items: ' .. (S.overlap_mode == 'crossfade'
-      and 'CROSSFADE (auto-crossfade overlapping items)' or 'OVERLAP (hard stack)'))
+  ImGui.SameLine(ctx, 0, 4); ImGui.SetCursorPosY(ctx, row_y)
+  -- v0.7.38: split-snap magnet. ON = SHIFT-drag split snaps to the grid; OFF =
+  -- drop the new region anywhere (free split, no snap).
+  if icon_button('##snapmag', sq, sq, S.split_snap,
+      S.split_snap and 'SNAP: SHIFT-drag split snaps to the grid (click → free / drop anywhere).'
+                    or 'FREE: SHIFT-drag split drops anywhere (click → snap to grid).', glyph_magnet) then
+    S.split_snap = not S.split_snap
+    set_status('Split snap: ' .. (S.split_snap and 'ON (grid)' or 'OFF (free)'))
   end
-  if ImGui.IsItemHovered(ctx) then
-    tip(S.overlap_mode == 'crossfade'
-      and 'Items: CROSSFADE — overlapping audio auto-crossfades (click → hard Overlap)'
-      or  'Items: OVERLAP — overlapping audio hard-stacks, no fade (click → Crossfade)')
-  end
+  ImGui.SameLine(ctx); ImGui.SetCursorPosY(ctx, row_y)   -- restore row baseline for the right group
 
-  -- RIGHT: Time/Beats toggle + Gap len, right-aligned (gap field over the Gap col).
-  local TIME_W, GAP_LABEL_W, GAP_FIELD_W = 56, 52, 60
+  -- RIGHT: Time/Beats icon toggle (clock = time · snare = beats) + Gap len.
+  local TIME_W = math.floor(sq * 1.3)
+  local GAP_LABEL_W, GAP_FIELD_W = 52, 60
   local RIGHT_W = TIME_W + 12 + GAP_LABEL_W + GAP_FIELD_W
   ImGui.SameLine(ctx)
   ImGui.SetCursorPosX(ctx, math.max(ImGui.GetCursorPosX(ctx), total_w - RIGHT_W))
-  if ImGui.Button(ctx, S.time_mode == 'beats' and 'Beats' or 'Time') then
-    S.time_mode = (S.time_mode == 'beats') and 'time' or 'beats'
-  end
-  if ImGui.IsItemHovered(ctx) then
-    tip('Start/Length display: ' ..
-      (S.time_mode == 'beats' and 'measures.beats (click → MM:SS.mmm)' or 'MM:SS.mmm (click → measures.beats)'))
+  local in_beats = (S.time_mode == 'beats')
+  if icon_button('##timebeats', TIME_W, sq, true,
+      'Start/Length display: ' ..
+      (in_beats and 'measures.beats (click → MM:SS.mmm)' or 'MM:SS.mmm (click → measures.beats)'),
+      in_beats and glyph_notes or glyph_clock) then
+    S.time_mode = in_beats and 'time' or 'beats'
   end
   ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, 'Gap Length')
   ImGui.SameLine(ctx); ImGui.SetNextItemWidth(ctx, GAP_FIELD_W)
@@ -2039,17 +2895,28 @@ local function loop()
   if S.dirty then load_regions() end
 
   push_grey_theme()
-  ImGui.SetNextWindowSize(ctx, 760, 460, ImGui.Cond_FirstUseEver)
+  -- Docking (v0.7.29): action a pending right-click dock toggle, then let REAPER
+  -- own the size when docked (don't fight the docker with SetNextWindowSize).
+  if S.dock_apply then
+    ImGui.SetNextWindowDockID(ctx, S.dock_target, ImGui.Cond_Always)
+    S.dock_apply = false
+  end
+  if not S.is_docked then
+    ImGui.SetNextWindowSize(ctx, 760, 460, ImGui.Cond_FirstUseEver)
+  end
   -- NoMove (v0.7.18c): disable ImGui's NATIVE drag-to-move. Plain-Text items (the
   -- per-digit time numbers) never become "active", so native move would grab the
   -- drag and slide the WINDOW instead of changing the number. Window moves now go
   -- SOLELY through the manual win_drag handler below, which already excludes
   -- num_drag / rename / edit / lane_drag — so dragging a number no longer moves the
   -- window, yet drag-anywhere (via SetWindowPos, unaffected by NoMove) still works.
+  -- Floating only: a docked window is moved by REAPER, so NoMove + win_drag are off.
   local win_flags = ImGui.WindowFlags_NoTitleBar | ImGui.WindowFlags_NoCollapse
-                  | ImGui.WindowFlags_NoMove
+  if not S.is_docked then win_flags = win_flags | ImGui.WindowFlags_NoMove end
   local visible, open = ImGui.Begin(ctx, SCRIPT_TITLE, true, win_flags)
   if visible then
+    S.is_docked = ImGui.IsWindowDocked(ctx)
+    if S.is_docked then S.last_dock_id = ImGui.GetWindowDockID(ctx) end
     -- v0.7.5b: title band → overview lane → controls (Poofox layout pref).
     draw_title_bar()
     draw_region_lane()
@@ -2061,33 +2928,60 @@ local function loop()
 
     -- Drag-anywhere: begin drag if mouse pressed in window on empty space —
     -- EXCEPT inside the region list/table, whose inter-row gaps would otherwise
-    -- yank the window while you reach to drag a region (v0.7.18d).
-    local mxw, myw = ImGui.GetMousePos(ctx)
-    local tr = S.table_rect
-    local in_table = tr and mxw >= tr[1] and mxw <= tr[3] and myw >= tr[2] and myw <= tr[4]
-    if not S.win_drag and not in_table then
-      if ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_RootWindow or 0)
-         and not ImGui.IsAnyItemHovered(ctx)
-         and not ImGui.IsAnyItemActive(ctx)
-         and ImGui.IsMouseClicked(ctx, 0)
-         and not S.rename and not S.edit and not S.num_drag and not S.lane_drag then
-        local wx, wy = ImGui.GetWindowPos(ctx)
-        S.win_drag = {wx=wx, wy=wy}
-        ImGui.ResetMouseDragDelta(ctx, 0)
+    -- yank the window while you reach to drag a region (v0.7.18d). Floating only:
+    -- a docked window is positioned by REAPER, so we never SetWindowPos it.
+    if not S.is_docked then
+      local mxw, myw = ImGui.GetMousePos(ctx)
+      local tr = S.table_rect
+      local in_table = tr and mxw >= tr[1] and mxw <= tr[3] and myw >= tr[2] and myw <= tr[4]
+      if not S.win_drag and not in_table then
+        if ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_RootWindow or 0)
+           and not ImGui.IsAnyItemHovered(ctx)
+           and not ImGui.IsAnyItemActive(ctx)
+           and ImGui.IsMouseClicked(ctx, 0)
+           and not S.rename and not S.edit and not S.num_drag and not S.lane_drag then
+          local wx, wy = ImGui.GetWindowPos(ctx)
+          S.win_drag = {wx=wx, wy=wy}
+          ImGui.ResetMouseDragDelta(ctx, 0)
+        end
       end
-    end
-    if S.win_drag then
-      if ImGui.IsMouseDown(ctx, 0) then
-        local dx, dy = ImGui.GetMouseDragDelta(ctx, 0)
-        ImGui.SetWindowPos(ctx, S.win_drag.wx + dx, S.win_drag.wy + dy)
-      else
-        S.win_drag = nil
+      if S.win_drag then
+        if ImGui.IsMouseDown(ctx, 0) then
+          local dx, dy = ImGui.GetMouseDragDelta(ctx, 0)
+          ImGui.SetWindowPos(ctx, S.win_drag.wx + dx, S.win_drag.wy + dy)
+        else
+          S.win_drag = nil
+        end
       end
+    else
+      S.win_drag = nil
     end
 
     -- Esc closes window when nothing else is being edited (otherwise Esc cancels edit)
     if not S.rename and not S.edit and not S.num_drag and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then
       S.want_close = true
+    end
+
+    -- Keyboard passthrough (v0.7.29 / hardened v0.7.31): when not typing in a
+    -- field, REAPER's shortcuts should work while ReaRanger is focused. The
+    -- WantCaptureKeyboard release alone did NOT reliably forward Ctrl+Z (Poofox:
+    -- "ctrl+z doesnt pass through"), so undo/redo are now dispatched EXPLICITLY via
+    -- Main_OnCommand. On the frame we handle them we KEEP capture (don't release)
+    -- so REAPER can't also process the same keypress → no double-undo. Other keys
+    -- (space = play, etc.) still fall through via the release.
+    if not ImGui.IsAnyItemActive(ctx) then
+      local mods   = ImGui.GetKeyMods(ctx)
+      local ctrl   = (mods & ImGui.Mod_Ctrl) ~= 0
+      local shift  = (mods & ImGui.Mod_Shift) ~= 0
+      local handled = false
+      if ctrl and ImGui.IsKeyPressed(ctx, ImGui.Key_Z, false) then
+        reaper.Main_OnCommand(shift and 40030 or 40029, 0)   -- redo : undo
+        handled = true
+      elseif ctrl and ImGui.IsKeyPressed(ctx, ImGui.Key_Y, false) then
+        reaper.Main_OnCommand(40030, 0)                       -- redo
+        handled = true
+      end
+      if not handled then ImGui.SetNextFrameWantCaptureKeyboard(ctx, false) end
     end
 
     ImGui.End(ctx)
