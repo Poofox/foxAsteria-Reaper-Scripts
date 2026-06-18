@@ -2,9 +2,118 @@
 <index version="1" name="foxAsteria-Reaper-Scripts">
   <category name="Arrangement">
     <reapack name="ReaRanger_fA.lua" type="script" desc="ReaRanger fA - Realtime Region List Editor">
-      <version name="0.7.28" author="foxAsteria" time="2026-06-17T16:24:55Z">
-        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/ad19b2c9e914e6bfffb084afb35f945f74f28aa3/ReaRanger_fA.lua</source>
-        <changelog><![CDATA[v0.7.28 — Length/duration entry honours the Time/Beats toggle everywhere (was
+      <version name="0.7.39" author="foxAsteria" time="2026-06-18T21:22:05Z">
+        <source main="true">https://github.com/Poofox/foxAsteria-Reaper-Scripts/raw/cfcb454834f1c2178a845e57a4fe5360e3199ad9/ReaRanger_fA.lua</source>
+        <changelog><![CDATA[v0.7.39 (2026-06-18) — per-digit drag refinement + gap-cell drag.
+  * Per-digit time drag now changes ONLY the hovered place (minutes / seconds /
+    ms) and CLAMPS within it — no carry into the neighbouring place. Dragging
+    seconds rolls 0–59 and stays in the same minute; ms stays 0–999.
+  * Ctrl-fine DROPPED (Poofox: "just makes it slower") — restrict-to-place is the
+    precision model now.
+  * GAP cell is now a draggable per-digit time value once a gap exists (same feel
+    as start/length): drag a digit to resize (ripple on release), double-click to
+    type exact, drag/type to 0 closes it. "+Gap" button stays for creating one.
+    New helpers close_gap_after (partial ripple-close) + set_gap_after (absolute).
+v0.7.38 (2026-06-18) — multi-select + split-snap toggle + 3-way removal.
+  * SPLIT-SNAP MAGNET toggle (toolbar center): ON = SHIFT-drag split snaps to
+    the project grid (clean bar landing); OFF = drop the new region anywhere
+    (free split, no snap). Default ON.
+  * LIST MULTI-SELECT: click = select · Ctrl+click = add/toggle · Shift+click =
+    range from the anchor. Whole selection highlights in list + lane.
+  * REMOVAL is now 3 options (right-click region, list or lane): "Remove region"
+    (marker only — timeline untouched), "Remove region + content (leave gap)",
+    "Remove region + content + gap" (ripple-close). Applies to the whole
+    multi-selection at once when the clicked region is part of it. One undo each.
+  * ALT-click erase = marker only, nothing else changes (now id-based delete).
+v0.7.37 (2026-06-18) — selection highlight made clearly visible on BOTH surfaces:
+  the list row tint was brightened (muted olive → warm amber), and the lane block
+  now gets a translucent warm fill on top of its bright border (the thin border
+  alone was easy to miss). Select a region anywhere → it pops in list + lane.
+  Also: +Region now auto-selects the region it just created (highlight + time-sel).
+  Also: new-region LENGTH field in beats mode now accepts a bare beat count
+  (tempo-aware fallback) — REAPER's measures.beats parser was rejecting edits
+  and pinning the length at the 4.0s default.
+  Also: SHIFT-drag split-create now snaps to the project GRID (grid lines only,
+  not region edges/markers — computed via QN). The lane spans the whole project,
+  so raw drags produced wild huge spans that never sat inside one region (→ no
+  split). Grid snap makes dragged regions land cleanly on bars at any zoom so
+  mid-region splits actually fire. ALT erase-click stays raw.
+v0.7.36 (2026-06-18) — added SHOW-IN-LANES toggle in the toolbar center (next
+  to crossfade): bound to REAPER option 40507 "Show overlapping media items in
+  lanes (when room)". Icon reflects REAPER's state, click flips it; self-guards
+  if the option is unavailable on the build.
+v0.7.35 (2026-06-18) — split moved to SHIFT-drag (Shift = REAPER's no-snap
+  modifier, so it reads naturally as "place exactly here"). ALT stays as the
+  erase-click. Split still uses raw cursor time (no snap).
+v0.7.34 (2026-06-18) — alt-split bypasses snapping (it was forcing the split
+  span to region edges, so a mid-region split was impossible). Alt drag now
+  uses raw cursor time, no maybe_snap.
+v0.7.33 (2026-06-18) — gap removal + gap highlighting.
+  * Gaps between regions are now faintly highlighted on the lane (warm tint +
+    thin border) so they read as targets.
+  * Right-click a gap → "Remove gap (X)" — ripple-deletes that empty span so
+    later content + region markers pull left by the gap length (inverse of the
+    +Gap insert). Undo-wrapped.
+v0.7.32 (2026-06-18) — gesture-driven lanes, alt split/erase, removal.
+  * Overlap/insert TOGGLE REMOVED. The drag gesture decides: sideways (same
+    lane) = ripple-reorder; drag a region into a DIFFERENT lane row = stack it
+    there (overlap), and the DRAGGED region keeps that lane (S.lane_pref →
+    pack_lanes honors it, instead of bumping the in-the-way region).
+  * +Region now always INSERTS (ripples space open — no accidental lanes).
+  * ALT-drag on the lane = create a new region over the dragged span; if it
+    lands strictly inside a region, that region splits into <name>-a / New
+    Region / <name>-b. ALT-click a region = erase marker only (content stays).
+  * Removal: right-click a region (lane OR list name) → "Remove region (keep
+    content)" / "Remove region + content (leave gap)". The latter deletes the
+    media items fully inside the span and the marker, leaving silence.
+  * Help text + tooltips rewritten for the gesture model; crossfade toggle kept.
+v0.7.31 (2026-06-18) — selection, add-region mode, glyph + undo fixes.
+  * SELECT a region: click a list row OR a lane block → highlights it in
+    ReaRanger (row tint + bright lane border) AND selects it in the project
+    (sets the time selection to the region span). Reverse-synced: when
+    REAPER's time selection matches a region, that row lights up — so you can
+    pick a region in the timeline, see which it is, then +Gap on that row.
+  * Lane CLICK: empty space now moves the edit cursor; clicking a region
+    SELECTS it (was: always moved the cursor).
+  * +Region honours the overlap toggle: NOT-OVERLAP = INSERT (opens space at
+    the cursor, ripples later content/markers right — no more accidental
+    lanes); OVERLAP = drop as-is. (Fixes "add region adds lanes".)
+  * +Region glyph no longer faded (it's an action, one state) + drawn as a
+    closed region block (top edge added) so it reads as a region, not an "H".
+  * Beats glyph = two beamed eighth notes instead of the snare (read as a TV).
+  * Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y now dispatch REAPER undo/redo explicitly
+    (40029/40030) — the WantCaptureKeyboard release alone didn't pass through.
+v0.7.30 (2026-06-17) — icon toolbar + 2-way overlap toggle + resync.
+  * ICON TOOLBAR: +Region, Time/Beats and the overlap toggle are now
+    hand-drawn DrawList glyphs (no text). +Region = "+" plus a region span
+    (bar w/ end caps); Time/Beats = clock (time) / snare drum (beats);
+    overlap toggle = two corner-offset shaded rects; not-overlap = two rects
+    with a gap. Light, low-contrast styling with a few greys — more contrast
+    when ON than OFF. Icons are frame-height so the row lines up.
+  * OVERLAP TOGGLE: 2-way EXCLUSIVE — OVERLAP / NOT OVERLAP (replaces the old
+    Insert/Lanes + Xfade/Overlap buttons; free-position dropped). S.region_mode
+    is source of truth; also sets the drag mode (lane_mode).
+  * CROSSFADE: standalone on/off icon toggle (bezier-X glyph, shaded lens),
+    set apart from the overlap pair. Bound to REAPER's own auto-crossfade
+    option (40912) — the icon reflects the REAPER state and clicking flips it
+    (self-guards if unavailable). User-driven; not forced on drags.
+  * RESYNC: the poll now detects regions MOVED / RESIZED / RENAMED / RECOLORED
+    directly in REAPER (was count-only → only saw add/remove). Cheap
+    GetProjectStateChangeCount gate, then a region content signature; guarded
+    against reloading mid drag/rename. No manual refresh button needed.
+  * TOOLTIPS: fixed stale "OVERLAY … marker only" hints — free-mode drags
+    MOVE CONTENT (since v0.7.14); renamed to FREE/CROSSFADE/LANES to match the
+    new toggle. HELP_TEXT updated.
+v0.7.29 (2026-06-17) — Docking + keyboard passthrough.
+  * Keyboard passthrough: when you're not typing in a field, ReaRanger now
+    releases ImGui's keyboard capture so REAPER's own shortcuts work while the
+    window is focused — Ctrl+Z undo, space = play, etc. (was swallowed before).
+  * Docking: right-click the title band → Dock / Undock. A docked window is
+    managed by REAPER (no custom drag-move / NoMove while docked); undock→redock
+    returns to the same docker. Drag a floating window onto a REAPER docker to
+    dock natively. Title-band right-click menu also has Close.
+
+v0.7.28 — Length/duration entry honours the Time/Beats toggle everywhere (was
 seconds-only in three spots): the +Region length field, the gap field, and the
 lane hover "len" readout. Values stay seconds internally.
 
